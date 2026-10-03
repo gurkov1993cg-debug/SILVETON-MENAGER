@@ -105,7 +105,7 @@ void appendSingleSample(BankProject& project, ImportedSample sample) {
     zone.rootKey = root;
     ms.zones.push_back(zone);
 
-    const std::uint32_t multisampleIndex = static_cast<std::uint32_t>(_project.multisamples.size());
+    const std::uint32_t multisampleIndex = static_cast<std::uint32_t>(project.multisamples.size());
     project.multisamples.push_back(std::move(ms));
     appendSoundForMultisample(project, multisampleIndex, name);
 }
