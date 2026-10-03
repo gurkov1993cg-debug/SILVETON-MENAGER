@@ -19,6 +19,7 @@ set(SILVETON_MANAGER_CORE_SOURCES
     src/core/KorgImporter.cpp
     src/core/SampleEditor.cpp
     src/core/SampleEditorRegions.cpp
+    src/core/SoundEditor.cpp
     src/core/SvBankBuilder.cpp
     src/core/SvBankFormat.cpp
     src/core/SvBankReader.cpp
