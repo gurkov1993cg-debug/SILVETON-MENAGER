@@ -50,6 +50,7 @@ if(APPLE)
     add_executable(SILVETON_MANAGER MACOSX_BUNDLE
         src/app/main.mm
         src/app/AppDelegate.mm
+        src/app/BankFileCommands.mm
         src/app/MainWindowController.mm
         src/app/WaveformInteraction.mm
         src/app/SampleAuditionPlayer.mm
@@ -57,6 +58,7 @@ if(APPLE)
         src/app/BankOrganizerController.mm
         src/app/SoundEditorController.mm
         src/app/ManagerDocument.mm
+        src/app/ManagerDocumentBankIO.mm
     )
 
     target_link_libraries(SILVETON_MANAGER PRIVATE
