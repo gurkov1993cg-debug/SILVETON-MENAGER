@@ -30,19 +30,19 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SHA-256, `.sv` round-trip/dedup/corruption/atomic write.
 
 ### `src/app/ManagerDocument.mm`
-- Real project owner, no placeholder library.
-- Imports KMP/KSC/KSF/WAV/WAVE/AIF/AIFF/AIFC through the core.
+- Real project owner, imports supported formats and builds the actual bank.
 - KMP/KSC multisamples become real SOUND records with deterministic Bank/Page/Slot addresses.
 - Standalone samples become real one-zone multisamples and SOUNDs.
-- Real bank build through `SvBankBuilder::writeAtomic`, exposing actual counts/dedup statistics.
-- Real clear/status/SOUND list operations.
+- Real clear/status/list/build operations only.
 
 ### `src/app/MainWindowController.mm`
-- Native AppKit window with only real controls.
-- `Import Samples…` opens the actual importer path and refreshes actual SOUND rows/counts.
-- `Clear` clears the real in-memory Manager project after confirmation.
-- `Build SILVETON_BANK.sv…` uses the real save path and real `.sv` builder; successful build displays real dedup/build statistics and output path.
-- Table content is generated from real imported SOUNDs; no fake CPU/meter/status widgets are present.
+- Native AppKit window with real `Import Samples…`, `Clear`, and `Build SILVETON_BANK.sv…` controls.
+- Table/status/output path are driven by real ManagerDocument data; no fake meters/status values.
+
+### `src/app/AppDelegate.mm`
+- Owns the main window controller for the full application lifetime.
+- Shows/centers the real Manager window at launch and activates the application.
+- Terminates the process after the last Manager window is closed.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -64,10 +64,10 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - SHA-256 standard `abc` vector PASS.
 - Local `.sv` round-trip/exact-audio/dedup/corruption tests PASS.
 - Release core + tests build with `-Werror`; `ctest` 1/1 PASS.
-- Native AppKit window/document code is committed, but full macOS application build is not yet claimed until AppDelegate/main are committed and Intel macOS CI runs.
+- AppKit document/window/delegate are committed; `main.mm` and first real Intel macOS application build remain before app-build success can be claimed.
 
 ## Next
-1. Implement AppDelegate and main entry.
-2. Fix any Intel/macOS compiler findings from the first real AppKit build.
-3. Replace the empty GitHub Actions workflow and run Intel macOS CI.
+1. Implement `main.mm`.
+2. Run first Intel/macOS build and fix actual compiler/link findings.
+3. Replace empty GitHub Actions workflow and run Intel macOS CI.
 4. Add folder/batch workflow polish and tablet transfer.
