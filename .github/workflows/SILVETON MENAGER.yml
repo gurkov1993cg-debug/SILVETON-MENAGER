@@ -1,1 +1,121 @@
+name: SILVETON Manager Intel macOS
 
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-test-package:
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare project from ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_PATH=".github/workflows/silveton-manager.zip"
+          WORK_DIR="$RUNNER_TEMP/silveton-manager-src"
+
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "ERROR: Missing $ZIP_PATH"
+            exit 1
+          fi
+
+          rm -rf "$WORK_DIR"
+          mkdir -p "$WORK_DIR"
+          ditto -x -k "$ZIP_PATH" "$WORK_DIR"
+
+          PROJECT_DIR="$(find "$WORK_DIR" -maxdepth 2 -name CMakeLists.txt -print -quit | xargs -I{} dirname "{}")"
+          if [ -z "${PROJECT_DIR:-}" ] || [ ! -f "$PROJECT_DIR/CMakeLists.txt" ]; then
+            echo "ERROR: Could not locate CMakeLists.txt inside ZIP"
+            find "$WORK_DIR" -maxdepth 3 -print
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S "$PROJECT_DIR" -B "$PROJECT_DIR/build"             -G Xcode             -DCMAKE_OSX_ARCHITECTURES=x86_64             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13             -DSILVETON_MANAGER_BUILD_TESTS=ON
+
+      - name: Build tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$PROJECT_DIR/build"             --config Release             --target silveton_manager_check
+
+      - name: Build app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$PROJECT_DIR/build"             --config Release             --target SILVETON_MANAGER
+
+      - name: Locate app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(find "$PROJECT_DIR/build" -type d -name 'SILVETON Manager.app' -print -quit)"
+          if [ -z "${APP_PATH:-}" ]; then
+            echo "ERROR: SILVETON Manager.app not found"
+            find "$PROJECT_DIR/build" -maxdepth 5 -print
+            exit 1
+          fi
+
+          EXECUTABLE="$APP_PATH/Contents/MacOS/SILVETON Manager"
+          if [ ! -f "$EXECUTABLE" ]; then
+            echo "ERROR: App executable not found"
+            exit 1
+          fi
+
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "EXECUTABLE=$EXECUTABLE" >> "$GITHUB_ENV"
+
+      - name: Verify Intel x86_64
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHS="$(lipo -archs "$EXECUTABLE")"
+          echo "Architectures: $ARCHS"
+          if [ "$ARCHS" != "x86_64" ]; then
+            echo "ERROR: Expected x86_64 only"
+            exit 1
+          fi
+
+      - name: Verify macOS 10.13 deployment target
+        shell: bash
+        run: |
+          set -euo pipefail
+          otool -l "$EXECUTABLE" | grep -A6 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' || true
+
+      - name: Ad-hoc sign
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Package app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/silveton-artifact"
+          ditto -c -k --sequesterRsrc --keepParent             "$APP_PATH"             "$RUNNER_TEMP/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip"
+          shasum -a 256             "$RUNNER_TEMP/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip"             > "$RUNNER_TEMP/silveton-artifact/SHA256.txt"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SILVETON-MANAGER-iMac2011-x86_64
+          path: |
+            ${{ runner.temp }}/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip
+            ${{ runner.temp }}/silveton-artifact/SHA256.txt
+          if-no-files-found: error
