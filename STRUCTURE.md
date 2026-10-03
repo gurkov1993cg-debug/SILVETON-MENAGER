@@ -26,7 +26,7 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `include/silveton/manager/SvBankFormat.h`, `src/core/SvBankFormat.cpp`: `.sv` v1 explicit little-endian fixed records + SHA-256.
 - `include/silveton/manager/SvBankBuilder.h`, `src/core/SvBankBuilder.cpp`: reference validation, string/audio dedup, 4096-byte audio alignment, integrity and atomic writing without `std::filesystem`.
 - `include/silveton/manager/SvBankReader.h`, `src/core/SvBankReader.cpp`: bounds/integrity/reference validation and complete project reconstruction.
-- `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata.
+- `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata. Path identity, extension and stem handling now use macOS-10.13-compatible string/POSIX operations instead of `std::filesystem`.
 - `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SHA-256, `.sv` round-trip/dedup/corruption/atomic write. Test fixture path handling now uses macOS-10.13-compatible string/POSIX temp-directory operations instead of `std::filesystem`.
 
 ### Native AppKit application
@@ -59,9 +59,11 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Intel run `37092813628`: configuration PASS and `SvBankBuilder.cpp` progressed past the prior failure; next failure was `KorgImporter.cpp` for the same macOS 10.13 `std::filesystem` availability rule. `KorgImporter.cpp` was corrected without raising the target.
 - Intel run `37108737366` / run 48: `KorgImporter.cpp`, `SvBankBuilder.cpp`, `SvBankReader.cpp`, `SvBankFormat.cpp` progressed through compile. The next real failure was isolated to `tests/ManagerCoreTests.cpp`, where the test fixture still used `std::filesystem` APIs unavailable for a macOS 10.13 deployment target.
 - `tests/ManagerCoreTests.cpp` commit `73ff5b5999240b724483556ae185adb397284f45` removes only that test-side incompatibility: string/POSIX temp path creation, file names and cleanup replace `std::filesystem`; the actual regression assertions and Manager behavior are preserved.
+- Intel run `37109218356` / run 49: configuration PASS and `ManagerCoreTests.cpp` progressed past the prior failure. The next real compile failure is `src/core/AudioFileLoader.cpp`, where source identity, extension and stem helpers still used `std::filesystem` unavailable at macOS 10.13.
+- `src/core/AudioFileLoader.cpp` commit `52947cf4a95ab9784a9f643cb6bea12234173c84` removes only that path-library incompatibility. WAV/AIFF parsing, root/loop metadata, PCM conversion and public API remain unchanged.
 - No app-build success is claimed until a subsequent Intel run reaches compile/link/test/sign/package checks.
 
 ## Next
-1. Inspect the new Intel run triggered by the test compatibility fix and fix only its next real failed step/log, if any.
+1. Inspect the new Intel run triggered by the AudioFileLoader compatibility fix and fix only its next real failed step/log, if any.
 2. Once green, verify/download the packaged `.app` artifact and preserve it as the proven Manager baseline.
 3. Add folder/batch workflow polish and tablet transfer.
