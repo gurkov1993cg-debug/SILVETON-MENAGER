@@ -21,7 +21,7 @@ SOUND editing is intentionally not duplicated in Manager. SOUND editing stays in
 Tablet runtime must only open the prepared bank/index and stream audio; it must not rebuild KMP/KSC structures on startup.
 
 ## Implemented files
-- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors. `src/core/SampleEditor.cpp` is part of the real core target.
+- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors. `src/core/SampleEditor.cpp` is part of the real core target. ARC (`-fobjc-arc`) is enabled only for the AppKit Manager target so Objective-C object ivars follow the ownership model used by the GUI code; the C++ core is unchanged.
 - `include/silveton/manager/ManagerTypes.h`: canonical Manager sample/multisample/SOUND model and preserved raw Korg metadata.
 - `include/silveton/manager/KorgImporter.h`, `src/core/KorgImporter.cpp`: KSF/KMP/KSC import, exact zones/dependencies, canonical PCM16LE. Path handling no longer depends on `std::filesystem`; it uses macOS-10.13-compatible string/POSIX path operations while preserving direct and nested KSF resolution and stable source identities.
 - `include/silveton/manager/SampleEditor.h`, `src/core/SampleEditor.cpp`: real offline sample-edit core for PCM16LE/PCM24LE/Float32LE project copies. Implements destructive trim, validated loop metadata/crossfade bounds, explicit user-triggered destructive loop-crossfade baking, frame-correct reverse with loop remap, gain, peak normalize, fade in/out, root key, fine tune, peak readback, nearest zero crossing and waveform min/max envelope generation. Source files on disk are not modified by these operations.
@@ -89,11 +89,15 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - `SvBankFormat.cpp` commit `ae378ab9f1fd5673db7949db25582e6b73eb11bf` corrects only that SHA-256 round constant; the `.sv` API/layout and sample editor are unchanged.
 - Intel run `37111451698` / run 69: strict x86_64/macOS 10.13 configuration PASS, core build PASS, expanded sample-editor regression tests PASS (`ctest` 1/1). The AppKit app build then failed only in `MainWindowController.mm` because `NSTextField` does not provide `unsignedLongLongValue`; 12 occurrences affected Trim/Loop/Crossfade/Fade/Zero-Crossing GUI parsing. Core/DSP code was not the cause.
 - `MainWindowController.mm` commit `fa1d3537dbea13c001d2793769f5272701a88614` replaces only those unsupported field conversions with explicit validated non-negative uint64 parsing and keeps every edit user-triggered. DSP/editor algorithms, public ManagerDocument bridge and other GUI controls are unchanged.
+- Intel run `37111941671` / run 71: complete CI SUCCESS — configure, core build, regression tests, AppKit app build, x86_64/macOS 10.13 verification, ad-hoc signing, packaging and artifact upload all passed. This proves build/package correctness only, not GUI runtime compatibility.
+- Physical iMac 2011 / macOS 10.13.6 launch test then FAILED before the GUI became usable. Crash report: `EXC_BAD_ACCESS` on main thread, `objc_msgSend` selector `count`, frame `-[SVMainWindowController tableView:viewForTableColumn:row:]`. The application is confirmed x86-64 native on macOS 10.13.6.
+- Root cause: Objective-C++ AppKit code uses ARC-style object ivars, while the Manager target had no ARC compile flag. `sampleDisplayRows` returns an autoreleased `NSMutableArray`; `_sampleRows` stored it in a raw ivar and AppKit later sent `count` after the object lifetime had ended.
+- `CMakeLists.txt` commit `ab16701d4a9c6bbfdace99d1bf32d89a4fe45a43` enables `-fobjc-arc` only for `SILVETON_MANAGER`. No C++ core, sample-editor DSP/API, bank format or GUI control logic is changed. A new Intel CI run and another physical High Sierra open test are required before calling the GUI runtime proven.
 - `ManagerDocument.mm` sample-edit bridge commit `9c1be226146a8ac2125e822f728e93cf74c4d549` is present.
 - `MainWindowController.mm` real waveform/editor GUI wiring commit `5eecd85c88899a6c4463098369d315c5040fdc4a` is present.
-- No complete app-build success is claimed until a subsequent Intel run reaches app compile/link, architecture/deployment verification, signing and packaging checks.
 
 ## Next
-1. Inspect the Intel run triggered by the GUI numeric parser correction and fix only its next real failed step/log if any.
-2. After a green build, preserve the first proven sample-editor Manager baseline.
-3. Add multisample keyboard/velocity-zone editor.
+1. Require the ARC-fix Intel run to pass compile/test/app/package checks.
+2. Install/open that exact artifact on the physical iMac 2011/macOS 10.13.6 and verify the window remains open and sample table renders without crash.
+3. Only after physical GUI launch success preserve the first proven sample-editor Manager baseline.
+4. Then add multisample keyboard/velocity-zone editor.
