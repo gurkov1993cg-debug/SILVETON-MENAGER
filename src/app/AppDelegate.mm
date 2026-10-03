@@ -23,12 +23,18 @@
 - (void)refreshFromDocument;
 @end
 
+@interface SVBankOrganizerWindowController : NSWindowController
+- (instancetype)initWithDocumentModel:(SVManagerDocument*)documentModel;
+- (void)refreshFromDocument;
+@end
+
 @interface SVAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
 @implementation SVAppDelegate {
     SVMainWindowController* _mainWindowController;
     SVMultisampleWindowController* _multisampleWindowController;
+    SVBankOrganizerWindowController* _bankOrganizerWindowController;
     SVSampleAuditionPlayer* _auditionPlayer;
 }
 
@@ -73,6 +79,12 @@
     [content addSubview:[self toolbarButtonWithFrame:NSMakeRect(480.0, 696.0, 70.0, 32.0) title:@"Stop" action:@selector(stopAudition:)]];
     [content addSubview:[self toolbarButtonWithFrame:NSMakeRect(558.0, 696.0, 74.0, 32.0) title:@"Undo" action:@selector(undoSampleEdit:)]];
     [content addSubview:[self toolbarButtonWithFrame:NSMakeRect(640.0, 696.0, 74.0, 32.0) title:@"Redo" action:@selector(redoSampleEdit:)]];
+
+    NSButton* bankButton = [self toolbarButtonWithFrame:NSMakeRect(720.0, 696.0, 112.0, 32.0)
+                                                 title:@"Bank Organizer…"
+                                                action:@selector(showBankOrganizer:)];
+    bankButton.autoresizingMask = NSViewMinYMargin;
+    [content addSubview:bankButton];
 
     NSButton* multisampleButton = [self toolbarButtonWithFrame:NSMakeRect(840.0, 696.0, 182.0, 32.0)
                                                           title:@"Multisample Editor…"
@@ -135,6 +147,7 @@
     }
     [_mainWindowController refreshProjectView];
     [_multisampleWindowController refreshFromDocument];
+    [_bankOrganizerWindowController refreshFromDocument];
 }
 
 - (void)redoSampleEdit:(id)sender {
@@ -148,6 +161,25 @@
     }
     [_mainWindowController refreshProjectView];
     [_multisampleWindowController refreshFromDocument];
+    [_bankOrganizerWindowController refreshFromDocument];
+}
+
+- (void)showBankOrganizer:(id)sender {
+    (void)sender;
+    if (_bankOrganizerWindowController == nil) {
+        SVManagerDocument* model = [self documentModel];
+        if (model == nil) {
+            [self showMessage:@"Bank Organizer unavailable"
+                         text:@"The shared Manager document could not be accessed."
+                        style:NSAlertStyleCritical];
+            return;
+        }
+        _bankOrganizerWindowController = [[SVBankOrganizerWindowController alloc] initWithDocumentModel:model];
+    }
+    [_bankOrganizerWindowController refreshFromDocument];
+    [_bankOrganizerWindowController showWindow:self];
+    [_bankOrganizerWindowController.window center];
+    [_bankOrganizerWindowController.window makeKeyAndOrderFront:self];
 }
 
 - (void)showMultisampleEditor:(id)sender {
