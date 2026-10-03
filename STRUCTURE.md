@@ -38,6 +38,11 @@ The Android tablet remains the live-performance runtime and must not rebuild KMP
 - Preserves raw Korg RLP1 pan/level/filter source values instead of replacing them with undocumented conversions.
 - Keeps canonical audio bytes separate from source-path metadata so later `.sv` building can deduplicate payloads safely.
 
+### `include/silveton/manager/KorgImporter.h`
+- Declares KSF, KMP and KSC import results and entry points.
+- Exposes normalized pan only as an editor/runtime view while preserving the original raw Korg pan value.
+- Keeps import warnings separate from hard errors so missing/unsupported regions cannot silently become fake samples.
+
 ## Planned source layout already reserved by CMake
 
 ### Core
@@ -95,11 +100,13 @@ Exact binary structures are not yet claimed as finalized until the format implem
 - Repository inspected: it initially contained only `.github/workflows/SILVETON MENAGER.yml`, which was effectively empty.
 - Development branch created successfully.
 - Root CMake baseline committed.
-- `ManagerTypes.h` committed.
+- Manager data model committed.
+- Korg importer public contract committed.
+- Local strict smoke test of the in-progress Korg importer against the real SALEAS-GRK fixture passes: 13 samples, 13 zones, C4 root 60, first real zone 2..61, raw pan 64 normalizes to centre, 48 kHz/16-bit/mono, no false loop on the first sample.
 - The Manager core has not yet completed a repository-wide build because the remaining CMake-referenced sources are still being implemented.
 
 ## Next implementation order
-1. Implement and lock real KSF/KMP/KSC import against the SALEAS-GRK fixture.
+1. Commit the tested KSF/KMP/KSC importer implementation.
 2. Define the stable `.sv` binary types and format contract.
 3. Add deterministic sample hashing/dedup identity.
 4. Adapt WAV/AIFF import.
