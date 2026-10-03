@@ -36,12 +36,8 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `src/app/main.mm`: native NSApplication entry/event loop.
 
 ### `.github/workflows/SILVETON MENAGER.yml`
-- Real Intel build workflow replaces the previously empty file.
-- Runner: `macos-15-intel`.
-- Xcode: locked to 16.4.
-- Configure/build: Release, x86_64 only, deployment target 10.13.
-- Builds/runs core regression tests before building the AppKit application.
-- Verifies Mach-O architecture and deployment target, validates Info.plist, ad-hoc signs, `codesign --verify --deep --strict`, packages the full `.app` with `ditto`, records SHA256 and uploads the Intel artifact.
+- Runner `macos-15-intel`, Xcode 16.4, Release x86_64, deployment target 10.13.
+- Tests before AppKit build; architecture/deployment/Info.plist/signing/package checks afterward.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -58,15 +54,12 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 8. 4096-byte-aligned deduplicated audio payload.
 
 ## Verification status
-- Development branch exists; `main` untouched.
-- Strict local SALEAS import smoke test PASS.
-- SHA-256 standard `abc` vector PASS.
-- Local `.sv` round-trip/exact-audio/dedup/corruption tests PASS.
-- Release core + tests build with `-Werror`; `ctest` 1/1 PASS.
-- All CMake-referenced AppKit sources and the Intel CI workflow now exist.
-- Full native application success is not claimed until the Intel GitHub run completes; fixes will follow only the real failed step/log if it fails.
+- Local Linux Release core/tests: PASS, `ctest` 1/1.
+- First real Intel run `37092662586`: Xcode 16.4 configure PASS; core compile FAILED in `SvBankBuilder.cpp` because libc++ `std::filesystem` APIs are unavailable for a macOS 10.13 deployment target (introduced 10.15).
+- The target was NOT raised. `SvBankBuilder.cpp` now uses macOS-10.13-compatible `std::string` paths plus C/POSIX `rename/remove` for atomic replacement, preserving the 10.13 contract.
+- No app-build success is claimed until a subsequent Intel run reaches all compile/link/sign/package checks.
 
 ## Next
-1. Inspect the first Intel GitHub Actions run and fix only real failures.
-2. Once green, verify/download packaged `.app` artifact and preserve it as the proven Manager baseline.
+1. Inspect the next Intel run and fix only the next real failed step/log, if any.
+2. Once green, verify/download the packaged `.app` artifact and preserve it as the proven Manager baseline.
 3. Add folder/batch workflow polish and tablet transfer.
