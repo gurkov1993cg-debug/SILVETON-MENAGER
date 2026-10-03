@@ -49,6 +49,7 @@ if(APPLE)
         src/app/main.mm
         src/app/AppDelegate.mm
         src/app/MainWindowController.mm
+        src/app/MultisampleEditorWindowController.mm
         src/app/ManagerDocument.mm
     )
 
@@ -62,6 +63,8 @@ if(APPLE)
 
     target_compile_options(SILVETON_MANAGER PRIVATE
         -fobjc-arc
+        -include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/app/SVForwardDeclarations.h
     )
 
     set_target_properties(SILVETON_MANAGER PROPERTIES
