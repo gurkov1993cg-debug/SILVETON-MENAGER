@@ -6,6 +6,7 @@
 #include "silveton/manager/SampleConverter.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,7 +33,7 @@ using silveton::manager::SampleConverter;
                           error:(NSString**)error;
 - (BOOL)exportSamplesAtIndexes:(NSIndexSet*)indexes
                      directory:(NSString*)directory
-                    formatChoice:(NSInteger)formatChoice
+                  formatChoice:(NSInteger)formatChoice
                      sampleRate:(NSUInteger)sampleRate
                        channels:(NSUInteger)channels
                  encodingChoice:(NSInteger)encodingChoice
@@ -131,36 +132,23 @@ NSString* safeStem(NSString* input, NSUInteger index) {
 
     std::vector<std::pair<std::size_t, ImportedSample>> converted;
     converted.reserve(indexes.count);
-    __block bool failed = false;
-    __block std::string failure;
-    [indexes enumerateIndexesUsingBlock:^(NSUInteger index, BOOL* stop) {
+    for (NSUInteger index = indexes.firstIndex; index != NSNotFound; index = [indexes indexGreaterThanIndex:index]) {
         if (index >= project->samples.size()) {
-            failed = true;
-            failure = "A selected sample index is no longer valid.";
-            *stop = YES;
-            return;
+            if (error != nullptr) *error = @"A selected sample index is no longer valid.";
+            return NO;
         }
         SampleConversionOptions options{};
         std::string localError;
         if (!configureOptions(project->samples[index], sampleRate, channels, encodingChoice, dither, options, localError)) {
-            failed = true;
-            failure = localError;
-            *stop = YES;
-            return;
+            setConverterError(error, localError);
+            return NO;
         }
         ImportedSample result{};
         if (!SampleConverter::convert(project->samples[index], options, result, localError)) {
-            failed = true;
-            failure = project->samples[index].name + ": " + localError;
-            *stop = YES;
-            return;
+            setConverterError(error, project->samples[index].name + ": " + localError);
+            return NO;
         }
         converted.emplace_back(static_cast<std::size_t>(index), std::move(result));
-    }];
-
-    if (failed) {
-        setConverterError(error, failure);
-        return NO;
     }
 
     for (auto& item : converted) project->samples[item.first] = std::move(item.second);
@@ -219,46 +207,31 @@ NSString* safeStem(NSString* input, NSUInteger index) {
     std::vector<PendingExport> pending;
     pending.reserve(indexes.count);
 
-    __block bool failed = false;
-    __block std::string failure;
-    [indexes enumerateIndexesUsingBlock:^(NSUInteger index, BOOL* stop) {
+    for (NSUInteger index = indexes.firstIndex; index != NSNotFound; index = [indexes indexGreaterThanIndex:index]) {
         if (index >= project->samples.size()) {
-            failed = true;
-            failure = "A selected sample index is no longer valid.";
-            *stop = YES;
-            return;
+            if (error != nullptr) *error = @"A selected sample index is no longer valid.";
+            return NO;
         }
         const ImportedSample& source = project->samples[index];
         SampleConversionOptions options{};
         std::string localError;
         if (!configureOptions(source, sampleRate, channels, encodingChoice, dither, options, localError)) {
-            failed = true;
-            failure = localError;
-            *stop = YES;
-            return;
+            setConverterError(error, localError);
+            return NO;
         }
         ImportedSample converted{};
         if (!SampleConverter::convert(source, options, converted, localError)) {
-            failed = true;
-            failure = source.name + ": " + localError;
-            *stop = YES;
-            return;
+            setConverterError(error, source.name + ": " + localError);
+            return NO;
         }
         NSString* stem = safeStem([NSString stringWithUTF8String:source.name.c_str()], index);
         NSString* filename = [stem stringByAppendingPathExtension:extension];
         NSString* path = [directory stringByAppendingPathComponent:filename];
         if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
-            failed = true;
-            failure = "Export would overwrite an existing file: " + std::string(path.fileSystemRepresentation);
-            *stop = YES;
-            return;
+            setConverterError(error, "Export would overwrite an existing file: " + std::string(path.fileSystemRepresentation));
+            return NO;
         }
         pending.push_back(PendingExport{std::move(converted), std::string(path.fileSystemRepresentation)});
-    }];
-
-    if (failed) {
-        setConverterError(error, failure);
-        return NO;
     }
 
     for (const auto& item : pending) {
