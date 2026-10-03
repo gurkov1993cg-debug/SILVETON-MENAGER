@@ -26,6 +26,7 @@ struct SampleHistoryEntry {
 
 constexpr std::size_t kMaxSampleHistoryEntries = 16U;
 constexpr std::size_t kMaxSampleHistoryBytes = 256U * 1024U * 1024U;
+constexpr std::uint16_t kLibraryAxisMaximum = 127U;
 
 std::size_t filenameStart(const std::string& path) noexcept {
     const std::size_t slash = path.find_last_of("/\\");
@@ -185,6 +186,41 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
     return static_cast<std::size_t>(zoneIndex) < project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones.size();
 }
 
+bool validSoundIndex(const BankProject& project, NSUInteger index) noexcept {
+    return static_cast<std::size_t>(index) < project.sounds.size();
+}
+
+bool soundAddressInUse(const BankProject& project,
+                       std::uint16_t bank,
+                       std::uint16_t page,
+                       std::uint16_t slot,
+                       std::size_t excludingIndex) noexcept {
+    for (std::size_t i = 0U; i < project.sounds.size(); ++i) {
+        if (i == excludingIndex) continue;
+        const auto& sound = project.sounds[i];
+        if (sound.bank == bank && sound.page == page && sound.slot == slot) return true;
+    }
+    return false;
+}
+
+bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t& slot) noexcept {
+    if (slot < kLibraryAxisMaximum) {
+        ++slot;
+        return true;
+    }
+    slot = 0U;
+    if (page < kLibraryAxisMaximum) {
+        ++page;
+        return true;
+    }
+    page = 0U;
+    if (bank < kLibraryAxisMaximum) {
+        ++bank;
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 @interface SVManagerDocument : NSObject {
@@ -243,6 +279,26 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
                               gainDb:(float)gainDb
                                  pan:(float)pan
                                error:(NSString**)error;
+
+- (NSUInteger)soundCount;
+- (NSArray<NSString*>*)soundDisplayRows;
+- (NSDictionary<NSString*, id>*)soundStateAtIndex:(NSUInteger)index;
+- (BOOL)updateSoundAtIndex:(NSUInteger)index
+                      name:(NSString*)name
+                      bank:(NSUInteger)bank
+                      page:(NSUInteger)page
+                      slot:(NSUInteger)slot
+                  category:(NSUInteger)category
+                     error:(NSString**)error;
+- (NSDictionary<NSString*, NSNumber*>*)nextFreeSoundAddressFromBank:(NSUInteger)bank
+                                                               page:(NSUInteger)page
+                                                               slot:(NSUInteger)slot
+                                                     excludingIndex:(NSUInteger)excludingIndex
+                                                              error:(NSString**)error;
+- (BOOL)autoPackSoundAddressesFromBank:(NSUInteger)bank
+                                   page:(NSUInteger)page
+                                   slot:(NSUInteger)slot
+                                  error:(NSString**)error;
 @end
 
 @implementation SVManagerDocument
@@ -361,8 +417,8 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
             if (layer.multisampleIndex < _project.multisamples.size()) zones += _project.multisamples[layer.multisampleIndex].zones.size();
         }
         NSString* name = nsString(sound.name);
-        [rows addObject:[NSString stringWithFormat:@"%03zu   %@   ·   %zu zone%@   ·   B%u P%u S%u",
-                         i + 1U, name, zones, zones == 1U ? @"" : @"s", sound.bank, sound.page, sound.slot]];
+        [rows addObject:[NSString stringWithFormat:@"%03zu   %@   ·   %zu zone%@   ·   B%u P%u S%u   ·   C%u",
+                         i + 1U, name, zones, zones == 1U ? @"" : @"s", sound.bank, sound.page, sound.slot, sound.category]];
     }
     return rows;
 }
@@ -854,6 +910,147 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
     zone.tuneCents = tuneCents;
     zone.gainDb = gainDb;
     zone.pan = pan;
+    clearError(error);
+    return YES;
+}
+
+- (NSUInteger)soundCount {
+    return static_cast<NSUInteger>(_project.sounds.size());
+}
+
+- (NSArray<NSString*>*)soundDisplayRows {
+    return [self displayRows];
+}
+
+- (NSDictionary<NSString*, id>*)soundStateAtIndex:(NSUInteger)index {
+    if (!validSoundIndex(_project, index)) return nil;
+    const auto& sound = _project.sounds[static_cast<std::size_t>(index)];
+    NSString* multisampleName = @"No multisample";
+    std::size_t zoneCount = 0U;
+    if (!sound.layers.empty()) {
+        const std::uint32_t multisampleIndex = sound.layers.front().multisampleIndex;
+        if (multisampleIndex < _project.multisamples.size()) {
+            const auto& multisample = _project.multisamples[multisampleIndex];
+            multisampleName = nsString(multisample.name);
+            zoneCount = multisample.zones.size();
+        }
+    }
+    return @{
+        @"name": nsString(sound.name),
+        @"bank": [NSNumber numberWithUnsignedInt:sound.bank],
+        @"page": [NSNumber numberWithUnsignedInt:sound.page],
+        @"slot": [NSNumber numberWithUnsignedInt:sound.slot],
+        @"category": [NSNumber numberWithUnsignedInt:sound.category],
+        @"multisampleName": multisampleName,
+        @"zoneCount": [NSNumber numberWithUnsignedLongLong:static_cast<unsigned long long>(zoneCount)]
+    };
+}
+
+- (BOOL)updateSoundAtIndex:(NSUInteger)index
+                      name:(NSString*)name
+                      bank:(NSUInteger)bank
+                      page:(NSUInteger)page
+                      slot:(NSUInteger)slot
+                  category:(NSUInteger)category
+                     error:(NSString**)error {
+    if (!validSoundIndex(_project, index)) {
+        if (error != nullptr) *error = @"No bank/library entry is selected.";
+        return NO;
+    }
+    if (bank > kLibraryAxisMaximum || page > kLibraryAxisMaximum || slot > kLibraryAxisMaximum || category > kLibraryAxisMaximum) {
+        if (error != nullptr) *error = @"Bank, Page, Slot and Category must each be between 0 and 127.";
+        return NO;
+    }
+    NSString* trimmed = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0U) {
+        if (error != nullptr) *error = @"Library entry name cannot be empty.";
+        return NO;
+    }
+
+    const auto b = static_cast<std::uint16_t>(bank);
+    const auto p = static_cast<std::uint16_t>(page);
+    const auto s = static_cast<std::uint16_t>(slot);
+    if (soundAddressInUse(_project, b, p, s, static_cast<std::size_t>(index))) {
+        if (error != nullptr) {
+            *error = [NSString stringWithFormat:@"Bank %lu / Page %lu / Slot %lu is already occupied.",
+                      (unsigned long)bank, (unsigned long)page, (unsigned long)slot];
+        }
+        return NO;
+    }
+
+    auto& sound = _project.sounds[static_cast<std::size_t>(index)];
+    sound.name = std::string(trimmed.UTF8String);
+    sound.bank = b;
+    sound.page = p;
+    sound.slot = s;
+    sound.category = static_cast<std::uint16_t>(category);
+    clearError(error);
+    return YES;
+}
+
+- (NSDictionary<NSString*, NSNumber*>*)nextFreeSoundAddressFromBank:(NSUInteger)bank
+                                                               page:(NSUInteger)page
+                                                               slot:(NSUInteger)slot
+                                                     excludingIndex:(NSUInteger)excludingIndex
+                                                              error:(NSString**)error {
+    if (bank > kLibraryAxisMaximum || page > kLibraryAxisMaximum || slot > kLibraryAxisMaximum) {
+        if (error != nullptr) *error = @"Bank, Page and Slot must each be between 0 and 127.";
+        return nil;
+    }
+
+    std::uint16_t b = static_cast<std::uint16_t>(bank);
+    std::uint16_t p = static_cast<std::uint16_t>(page);
+    std::uint16_t s = static_cast<std::uint16_t>(slot);
+    const std::size_t excluded = excludingIndex == NSNotFound ? _project.sounds.size() : static_cast<std::size_t>(excludingIndex);
+
+    while (true) {
+        if (!soundAddressInUse(_project, b, p, s, excluded)) {
+            clearError(error);
+            return @{
+                @"bank": [NSNumber numberWithUnsignedInt:b],
+                @"page": [NSNumber numberWithUnsignedInt:p],
+                @"slot": [NSNumber numberWithUnsignedInt:s]
+            };
+        }
+        if (!nextLibraryAddress(b, p, s)) break;
+    }
+
+    if (error != nullptr) *error = @"No free Bank/Page/Slot address exists at or after the requested position.";
+    return nil;
+}
+
+- (BOOL)autoPackSoundAddressesFromBank:(NSUInteger)bank
+                                   page:(NSUInteger)page
+                                   slot:(NSUInteger)slot
+                                  error:(NSString**)error {
+    if (bank > kLibraryAxisMaximum || page > kLibraryAxisMaximum || slot > kLibraryAxisMaximum) {
+        if (error != nullptr) *error = @"Bank, Page and Slot must each be between 0 and 127.";
+        return NO;
+    }
+    if (_project.sounds.empty()) {
+        if (error != nullptr) *error = @"There are no library entries to pack.";
+        return NO;
+    }
+
+    std::uint16_t b = static_cast<std::uint16_t>(bank);
+    std::uint16_t p = static_cast<std::uint16_t>(page);
+    std::uint16_t s = static_cast<std::uint16_t>(slot);
+
+    std::vector<std::array<std::uint16_t, 3U>> addresses;
+    addresses.reserve(_project.sounds.size());
+    for (std::size_t i = 0U; i < _project.sounds.size(); ++i) {
+        addresses.push_back({b, p, s});
+        if (i + 1U < _project.sounds.size() && !nextLibraryAddress(b, p, s)) {
+            if (error != nullptr) *error = @"There is not enough Bank/Page/Slot space to pack all entries from this starting address.";
+            return NO;
+        }
+    }
+
+    for (std::size_t i = 0U; i < _project.sounds.size(); ++i) {
+        _project.sounds[i].bank = addresses[i][0];
+        _project.sounds[i].page = addresses[i][1];
+        _project.sounds[i].slot = addresses[i][2];
+    }
     clearError(error);
     return YES;
 }
