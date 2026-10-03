@@ -43,6 +43,14 @@ The Android tablet remains the live-performance runtime and must not rebuild KMP
 - Exposes normalized pan only as an editor/runtime view while preserving the original raw Korg pan value.
 - Keeps import warnings separate from hard errors so missing/unsupported regions cannot silently become fake samples.
 
+### `src/core/KorgImporter.cpp`
+- Implements chunk-safe KSF/KMP/KSC parsing.
+- KSF import validates SMP1/SMD1, sample rate, channels, 16-bit uncompressed payload length and loop bounds.
+- Converts KSF big-endian PCM16 into canonical little-endian PCM16 for `.sv` storage without resampling.
+- KMP import preserves skipped/internal regions, exact key ranges, root key, tune, non-transpose and raw pan/level/filter metadata.
+- Resolves external KSF files beside the KMP or in the common same-name nested directory.
+- KSC import resolves relative KMP/KSF entries and avoids duplicate standalone KSF imports already referenced by a KMP.
+
 ## Planned source layout already reserved by CMake
 
 ### Core
@@ -64,12 +72,12 @@ The Android tablet remains the live-performance runtime and must not rebuild KMP
 - `tests/ManagerCoreTests.cpp`
 
 ## Donor source policy
-The Manager will reuse only proven sampler-side parsing/loading concepts that are appropriate for offline desktop preparation. The current SILVETON Sampler R4 source is the donor reference for:
+The Manager reuses only proven sampler-side parsing/loading concepts that are appropriate for offline desktop preparation. The current SILVETON Sampler R4 source is the donor reference for:
 - KMP/KSF/KSC import logic.
 - WAV/AIFF/audio loading logic.
 - sample metadata and multisample-zone structures where compatible.
 
-The Manager will not copy Android runtime, Direct-ALSA, Direct-MIDI, COMBI GUI, or realtime tablet code.
+The Manager does not copy Android runtime, Direct-ALSA, Direct-MIDI, COMBI GUI, or realtime tablet code.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` plus `MS000000.KSF` ... `MS000012.KSF` is the first real import fixture.
@@ -79,7 +87,8 @@ Verified facts from the fixture:
 - 13 external KSF samples remain and produce 13 playable zones.
 - Samples are 48 kHz, 16-bit, mono PCM.
 - The first real zone uses C4/root 60 and covers keys 2..61.
-- All playable regions carry raw pan value 64; this raw value is preserved exactly in Manager metadata.
+- All playable regions carry raw pan value 64; this raw value is preserved exactly and normalizes to centre.
+- The first KSF has no valid forward loop, so the importer does not invent one.
 
 ## SILVETON_BANK.sv contract direction
 The final Manager output remains one master bank file rather than one file per SOUND.
@@ -101,17 +110,16 @@ Exact binary structures are not yet claimed as finalized until the format implem
 - Development branch created successfully.
 - Root CMake baseline committed.
 - Manager data model committed.
-- Korg importer public contract committed.
-- Local strict smoke test of the in-progress Korg importer against the real SALEAS-GRK fixture passes: 13 samples, 13 zones, C4 root 60, first real zone 2..61, raw pan 64 normalizes to centre, 48 kHz/16-bit/mono, no false loop on the first sample.
+- Korg importer contract and implementation committed.
+- Local strict smoke test against the real SALEAS-GRK fixture passes: 13 samples, 13 zones, C4 root 60, first real zone 2..61, raw pan 64 -> centre, 48 kHz/16-bit/mono, no false loop.
 - The Manager core has not yet completed a repository-wide build because the remaining CMake-referenced sources are still being implemented.
 
 ## Next implementation order
-1. Commit the tested KSF/KMP/KSC importer implementation.
-2. Define the stable `.sv` binary types and format contract.
-3. Add deterministic sample hashing/dedup identity.
-4. Adapt WAV/AIFF import.
-5. Implement bank builder and bank reader with integrity/offset validation.
-6. Add regression tests for exact round-trip, corrupt-bank rejection, duplicate-sample elimination, ranges and metadata.
-7. Build the native AppKit Manager GUI around the proven core.
-8. Add batch import and one-click `SILVETON_BANK.sv` build workflow.
-9. Add transfer workflow to the tablet after the bank format is proven.
+1. Define and implement the stable `.sv` binary types and format contract.
+2. Add deterministic sample hashing/dedup identity.
+3. Adapt WAV/AIFF import.
+4. Implement bank builder and bank reader with integrity/offset validation.
+5. Add regression tests for exact round-trip, corrupt-bank rejection, duplicate-sample elimination, ranges and metadata.
+6. Build the native AppKit Manager GUI around the proven core.
+7. Add batch import and one-click `SILVETON_BANK.sv` build workflow.
+8. Add transfer workflow to the tablet after the bank format is proven.
