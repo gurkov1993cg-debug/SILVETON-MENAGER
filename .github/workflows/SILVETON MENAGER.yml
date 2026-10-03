@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build build --config Release --target silveton_manager_tests
+          cmake --build build --config Release --target silveton_manager_tests silveton_sample_editor_region_tests
 
       - name: Run core regression tests
         shell: bash
