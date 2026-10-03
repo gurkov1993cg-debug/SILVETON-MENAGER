@@ -1,1 +1,107 @@
+name: SILVETON Manager Intel macOS
 
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - silveton-manager-development
+
+jobs:
+  build-test-package:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d /Applications/Xcode_16.4.app
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+          cmake --version
+
+      - name: Configure Release x86_64 macOS 10.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Xcode \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+            -DSILVETON_MANAGER_BUILD_TESTS=ON
+
+      - name: Build core regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --config Release --target silveton_manager_tests
+
+      - name: Run core regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --test-dir build -C Release --output-on-failure
+
+      - name: Build SILVETON Manager app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --config Release --target SILVETON_MANAGER
+
+      - name: Verify Intel architecture and deployment target
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build -type d -name 'SILVETON Manager.app' -print -quit)"
+          test -n "$APP_PATH"
+          EXE="$APP_PATH/Contents/MacOS/SILVETON Manager"
+          test -f "$EXE"
+
+          file "$EXE"
+          ARCHS="$(lipo -archs "$EXE")"
+          echo "Architectures: $ARCHS"
+          test "$ARCHS" = "x86_64"
+
+          otool -l "$EXE" > deployment.txt
+          if grep -A5 'LC_BUILD_VERSION' deployment.txt | grep -q 'minos 10.13'; then
+            echo "Deployment target verified via LC_BUILD_VERSION: 10.13"
+          elif grep -A5 'LC_VERSION_MIN_MACOSX' deployment.txt | grep -q 'version 10.13'; then
+            echo "Deployment target verified via LC_VERSION_MIN_MACOSX: 10.13"
+          else
+            echo "Expected macOS deployment target 10.13 was not found"
+            cat deployment.txt
+            exit 1
+          fi
+
+          plutil -lint "$APP_PATH/Contents/Info.plist"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Ad-hoc sign and verify app
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Package application
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP_PATH" \
+            artifact/SILVETON-MANAGER-iMac2011-x86_64.zip
+          shasum -a 256 artifact/SILVETON-MANAGER-iMac2011-x86_64.zip | tee artifact/SHA256.txt
+
+      - name: Upload Intel macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SILVETON-MANAGER-iMac2011-x86_64
+          path: |
+            artifact/SILVETON-MANAGER-iMac2011-x86_64.zip
+            artifact/SHA256.txt
+          if-no-files-found: error
