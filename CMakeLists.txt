@@ -60,6 +60,10 @@ if(APPLE)
         "-framework AudioToolbox"
     )
 
+    target_compile_options(SILVETON_MANAGER PRIVATE
+        -fobjc-arc
+    )
+
     set_target_properties(SILVETON_MANAGER PROPERTIES
         OUTPUT_NAME "SILVETON Manager"
         MACOSX_BUNDLE_BUNDLE_NAME "SILVETON Manager"
