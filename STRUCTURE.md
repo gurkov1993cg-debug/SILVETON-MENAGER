@@ -21,7 +21,11 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 ## Implemented files
 
 ### `CMakeLists.txt`
-- Intel/macOS baseline, core library, AppKit target and tests.
+- Portable core project now declares only C/CXX globally.
+- Objective-C++ is enabled only on Apple, avoiding non-macOS core CI failures.
+- macOS remains locked to x86_64 and deployment target 10.13.
+- Core/tests compile with strict warnings as errors.
+- AppKit bundle target remains Apple-only.
 
 ### `include/silveton/manager/ManagerTypes.h`
 - Canonical Manager sample/multisample/SOUND model with preserved raw Korg source metadata.
@@ -40,19 +44,17 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 
 ### `include/silveton/manager/SvBankBuilder.h`
 ### `src/core/SvBankBuilder.cpp`
-- Reference validation, string/audio dedup, 4096-byte audio alignment, SHA-256 and atomic writing.
+- Reference validation, deduplication, 4096-byte audio alignment, SHA-256 and atomic writing.
 
 ### `include/silveton/manager/SvBankReader.h`
 ### `src/core/SvBankReader.cpp`
-- Bounds/integrity/reference validation and full project reconstruction from `.sv`.
+- Bounds/integrity/reference validation and full project reconstruction.
 
 ### `include/silveton/manager/AudioFileLoader.h`
 ### `src/core/AudioFileLoader.cpp`
-- WAV import: PCM16, PCM24 and IEEE float32, mono/stereo, exact canonical bytes.
-- Reads WAV `smpl` unity note and valid forward loop without inventing missing loops.
-- AIFF import: PCM16/PCM24 mono/stereo with big-endian -> canonical little-endian conversion.
-- AIFC supports uncompressed `NONE` and little-endian `sowt`; compressed codecs are rejected explicitly.
-- AIFF `INST` root key and forward sustain loop are read when valid MARK references exist.
+- WAV PCM16/PCM24/Float32 import with `smpl` root/forward loop support.
+- AIFF PCM16/PCM24 and AIFC `NONE`/`sowt` import; canonical little-endian output.
+- AIFF INST root key and valid forward sustain loop support.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -73,10 +75,11 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
 - Local full `.sv` build/read round-trip, exact audio recovery, dedup and corrupt-bank rejection PASS.
-- Audio loader implementation compiles locally with strict `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror`.
+- Audio loader compiles locally with strict `-Werror`.
+- Portable CMake blocker fixed before CI.
 - Repository-wide build is not yet claimed until regression tests and AppKit sources are committed and CI runs.
 
 ## Next
-1. Commit regression tests and make core build cleanly.
+1. Commit regression tests and obtain clean core build.
 2. Native AppKit GUI with real Import/Build Bank actions.
 3. Batch import, one-click bank build, tablet transfer.
