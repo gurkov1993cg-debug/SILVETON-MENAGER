@@ -100,7 +100,7 @@ std::vector<double> resample(const std::vector<double>& input,
                              std::uint32_t sourceRate,
                              std::uint32_t targetRate,
                              std::uint64_t targetFrames) {
-    if (sourceRate == targetRate || sourceFrames == targetFrames) return input;
+    if (sourceRate == targetRate) return input;
 
     std::vector<double> output(static_cast<std::size_t>(targetFrames) * static_cast<std::size_t>(channels), 0.0);
     const double sourcePerTarget = static_cast<double>(sourceRate) / static_cast<double>(targetRate);
