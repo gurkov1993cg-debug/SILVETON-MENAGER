@@ -40,14 +40,14 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - Hash only selects dedup candidates; exact byte equality remains mandatory.
 
 ### `include/silveton/manager/SvBankFormat.h`
-- `.sv` major version 1, fixed 256-byte header and seven indexed sections.
-- Fixed record contracts for SOUNDs, layers, multisamples, samples and zones.
-
 ### `src/core/SvBankFormat.cpp`
-- Explicit little-endian serialization/deserialization; no host-struct binary dumping.
-- Fixed record padding makes the format architecture-independent between Intel Manager and ARM tablet.
-- Implements internal SHA-256 with no external dependency.
-- Header parser rejects wrong magic, unsupported major version, truncated header/section table and invalid header size.
+- `.sv` v1 fixed 256-byte header, seven indexed sections and fixed-size records.
+- Explicit little-endian serializer/parser; architecture-independent Intel -> ARM data.
+- SHA-256 payload integrity with no external dependency.
+
+### `include/silveton/manager/SvBankBuilder.h`
+- Declares in-memory bank build and atomic file-write operations.
+- Build statistics expose SOUND/multisample/sample/zone counts and before/after audio dedup byte counts.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -61,17 +61,17 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 5. Sample records.
 6. Zone records.
 7. Deduplicated string table.
-8. Audio payload section; builder aligns this section to 4096 bytes for random access/streaming.
+8. Audio payload section; builder aligns it to 4096 bytes for random access/streaming.
 
 ## Verification status
 - Development branch exists; `main` untouched.
 - Strict local SALEAS Korg import smoke test PASS.
-- SHA-256 implementation matches the standard `abc` test vector locally.
-- In-progress bank builder/reader locally passes round-trip, exact audio recovery, dedup and corruption rejection; those files are next to commit.
+- SHA-256 matches the standard `abc` test vector locally.
+- In-progress bank builder/reader locally passes round-trip, exact audio recovery, dedup and corruption rejection.
 - Repository-wide build is not yet claimed until all CMake-referenced sources and tests are committed and CI runs.
 
 ## Next
-1. Commit `.sv` builder/reader.
+1. Commit bank builder implementation and reader contract/implementation.
 2. WAV/AIFF importer.
 3. Regression tests + clean core build.
 4. Native AppKit GUI.
