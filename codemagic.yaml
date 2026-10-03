@@ -1,0 +1,105 @@
+workflows:
+  silveton-manager-intel:
+    name: SILVETON Manager Intel macOS
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      xcode: 16.4
+
+    scripts:
+      - name: Prepare project from ZIP
+        script: |
+          set -euo pipefail
+
+          ZIP_PATH="$CM_BUILD_DIR/silveton-manager.zip"
+          WORK_DIR="$CM_BUILD_DIR/_silveton_src"
+
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "ERROR: Missing $ZIP_PATH"
+            exit 1
+          fi
+
+          rm -rf "$WORK_DIR"
+          mkdir -p "$WORK_DIR"
+          ditto -x -k "$ZIP_PATH" "$WORK_DIR"
+
+          PROJECT_DIR="$(find "$WORK_DIR" -maxdepth 3 -name CMakeLists.txt -print -quit | xargs -I{} dirname "{}")"
+
+          if [ -z "${PROJECT_DIR:-}" ] || [ ! -f "$PROJECT_DIR/CMakeLists.txt" ]; then
+            echo "ERROR: Could not locate CMakeLists.txt inside ZIP"
+            find "$WORK_DIR" -maxdepth 4 -print
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$CM_ENV"
+
+      - name: Configure
+        script: |
+          set -euo pipefail
+          cmake -S "$PROJECT_DIR" -B "$PROJECT_DIR/build" \
+            -G Xcode \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+            -DSILVETON_MANAGER_BUILD_TESTS=ON
+
+      - name: Build tests
+        script: |
+          set -euo pipefail
+          cmake --build "$PROJECT_DIR/build" \
+            --config Release \
+            --target silveton_manager_check
+
+      - name: Build app
+        script: |
+          set -euo pipefail
+          cmake --build "$PROJECT_DIR/build" \
+            --config Release \
+            --target SILVETON_MANAGER
+
+      - name: Verify and package
+        script: |
+          set -euo pipefail
+
+          APP_PATH="$(find "$PROJECT_DIR/build" -type d -name 'SILVETON Manager.app' -print -quit)"
+
+          if [ -z "${APP_PATH:-}" ]; then
+            echo "ERROR: SILVETON Manager.app not found"
+            find "$PROJECT_DIR/build" -maxdepth 5 -print
+            exit 1
+          fi
+
+          EXECUTABLE="$APP_PATH/Contents/MacOS/SILVETON Manager"
+
+          if [ ! -f "$EXECUTABLE" ]; then
+            echo "ERROR: App executable not found"
+            exit 1
+          fi
+
+          ARCHS="$(lipo -archs "$EXECUTABLE")"
+          echo "Architectures: $ARCHS"
+
+          if [ "$ARCHS" != "x86_64" ]; then
+            echo "ERROR: Expected x86_64 only"
+            exit 1
+          fi
+
+          echo "Deployment target information:"
+          otool -l "$EXECUTABLE" | grep -A6 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' || true
+
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          mkdir -p "$CM_BUILD_DIR/artifacts"
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP_PATH" \
+            "$CM_BUILD_DIR/artifacts/SILVETON-MANAGER-iMac2011-x86_64.zip"
+
+          shasum -a 256 \
+            "$CM_BUILD_DIR/artifacts/SILVETON-MANAGER-iMac2011-x86_64.zip" \
+            > "$CM_BUILD_DIR/artifacts/SHA256.txt"
+
+    artifacts:
+      - artifacts/SILVETON-MANAGER-iMac2011-x86_64.zip
+      - artifacts/SHA256.txt
