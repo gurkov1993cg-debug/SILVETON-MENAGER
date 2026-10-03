@@ -34,7 +34,7 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 
 ### Native AppKit application
 - `src/app/ManagerDocument.mm`: real imports, real status/list/clear, real atomic `.sv` build, and real selected-sample edit bridge. It exposes actual sample rows/state/waveform plus explicit user-triggered Trim, Set Loop, Apply Loop Crossfade, Reverse, Gain, Normalize, Fade In, Fade Out, Root Key, Fine Tune and Zero Crossing calls directly to `SampleEditor`. Import and Build never call these edit functions automatically. Old `std::filesystem` path usage was removed for macOS 10.13 compatibility.
-- `src/app/MainWindowController.mm`: real sample-editor GUI is now wired. It shows the actual sample list, actual waveform min/max data, actual loop markers and numeric controls for Trim, Loop, Loop Crossfade, Fade In/Out, Gain, Normalize, Reverse, Root Key, Fine Tune and explicit Zero-Crossing Snap helpers. Every edit requires a user button press; no selection/import/build action applies DSP edits automatically.
+- `src/app/MainWindowController.mm`: real sample-editor GUI is wired. It shows the actual sample list, actual waveform min/max data, actual loop markers and numeric controls for Trim, Loop, Loop Crossfade, Fade In/Out, Gain, Normalize, Reverse, Root Key, Fine Tune and explicit Zero-Crossing Snap helpers. Every edit requires a user button press; no selection/import/build action applies DSP edits automatically. Unsigned frame/radius fields now use explicit validated parsing instead of unsupported `NSTextField.unsignedLongLongValue`; invalid or negative text is rejected with a warning instead of silently becoming zero.
 - `src/app/AppDelegate.mm`: owns/shows the Manager window and application lifecycle.
 - `src/app/main.mm`: native NSApplication entry/event loop.
 
@@ -87,11 +87,13 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - Sample-editor regression coverage commit `099babef24741c2b34971eaaa698e4640a4745c5` is present and explicitly checks that editing is user-triggered and PCM changes are real.
 - Intel run `37110792932` / run 63: strict x86_64/macOS 10.13 core build including `SampleEditor.cpp` and the expanded regression test executable SUCCEEDED. CTest then failed at the independent SHA-256 standard-vector assertion before the later bank/app stages. The exact source cause was the incorrect SHA-256 K constant `0x4ed8aa4U` in `SvBankFormat.cpp`; it must be `0x4ed8aa4aU`.
 - `SvBankFormat.cpp` commit `ae378ab9f1fd5673db7949db25582e6b73eb11bf` corrects only that SHA-256 round constant; the `.sv` API/layout and sample editor are unchanged.
+- Intel run `37111451698` / run 69: strict x86_64/macOS 10.13 configuration PASS, core build PASS, expanded sample-editor regression tests PASS (`ctest` 1/1). The AppKit app build then failed only in `MainWindowController.mm` because `NSTextField` does not provide `unsignedLongLongValue`; 12 occurrences affected Trim/Loop/Crossfade/Fade/Zero-Crossing GUI parsing. Core/DSP code was not the cause.
+- `MainWindowController.mm` commit `fa1d3537dbea13c001d2793769f5272701a88614` replaces only those unsupported field conversions with explicit validated non-negative uint64 parsing and keeps every edit user-triggered. DSP/editor algorithms, public ManagerDocument bridge and other GUI controls are unchanged.
 - `ManagerDocument.mm` sample-edit bridge commit `9c1be226146a8ac2125e822f728e93cf74c4d549` is present.
-- `MainWindowController.mm` real waveform/editor GUI wiring commit `5eecd85c88899a6c4463098369d315c5040fdc4a` is present; Intel app compile/test is still required before claiming end-to-end success.
-- No app-build success is claimed until a subsequent Intel run reaches compile/link/test/sign/package checks.
+- `MainWindowController.mm` real waveform/editor GUI wiring commit `5eecd85c88899a6c4463098369d315c5040fdc4a` is present.
+- No complete app-build success is claimed until a subsequent Intel run reaches app compile/link, architecture/deployment verification, signing and packaging checks.
 
 ## Next
-1. Inspect the Intel run triggered by the SHA-256 correction and fix only its next real failed step/log if any.
+1. Inspect the Intel run triggered by the GUI numeric parser correction and fix only its next real failed step/log if any.
 2. After a green build, preserve the first proven sample-editor Manager baseline.
 3. Add multisample keyboard/velocity-zone editor.
