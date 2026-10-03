@@ -159,6 +159,14 @@ if(SILVETON_MANAGER_BUILD_TESTS)
     add_test(NAME silveton_media_paths COMMAND silveton_media_path_tests)
     add_test(NAME silveton_object_manager COMMAND silveton_object_manager_tests)
 
+    set(SILVETON_MANAGER_TEST_TARGETS
+        silveton_manager_tests
+        silveton_sample_editor_region_tests
+        silveton_sound_editor_tests
+        silveton_media_path_tests
+        silveton_object_manager_tests
+    )
+
     if(APPLE)
         add_executable(silveton_manager_bank_io_tests
             tests/ManagerDocumentBankIOTests.mm
@@ -171,5 +179,18 @@ if(SILVETON_MANAGER_BUILD_TESTS)
         )
         target_compile_options(silveton_manager_bank_io_tests PRIVATE -fobjc-arc)
         add_test(NAME silveton_manager_bank_io COMMAND silveton_manager_bank_io_tests)
+        list(APPEND SILVETON_MANAGER_TEST_TARGETS silveton_manager_bank_io_tests)
     endif()
+
+    # One target builds every test executable first and then runs the complete
+    # registered CTest suite exactly once. CI only needs to invoke this target.
+    add_custom_target(silveton_manager_check
+        COMMAND ${CMAKE_CTEST_COMMAND}
+                --test-dir "${CMAKE_BINARY_DIR}"
+                -C "$<CONFIG>"
+                --output-on-failure
+        DEPENDS ${SILVETON_MANAGER_TEST_TARGETS}
+        USES_TERMINAL
+        VERBATIM
+    )
 endif()
