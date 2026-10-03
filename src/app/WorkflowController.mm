@@ -73,14 +73,14 @@ SVManagerDocument* WorkflowDocument(SVAppDelegate* delegate) {
 }
 
 - (instancetype)initWithDelegate:(SVAppDelegate*)delegate {
-    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0.0, 0.0, 760.0, 520.0)
+    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0.0, 0.0, 800.0, 560.0)
                                                   styleMask:(NSWindowStyleMaskTitled |
                                                              NSWindowStyleMaskClosable |
                                                              NSWindowStyleMaskMiniaturizable)
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
     window.title = @"SILVETON Workflow";
-    window.backgroundColor = [NSColor colorWithCalibratedRed:0.055 green:0.067 blue:0.078 alpha:1.0];
+    window.backgroundColor = [NSColor colorWithCalibratedRed:0.050 green:0.061 blue:0.073 alpha:1.0];
     self = [super initWithWindow:window];
     if (self) {
         _delegate = delegate;
@@ -96,36 +96,36 @@ SVManagerDocument* WorkflowDocument(SVAppDelegate* delegate) {
     NSColor* dimText = [NSColor colorWithCalibratedWhite:0.62 alpha:1.0];
     NSColor* accent = [NSColor colorWithCalibratedRed:0.45 green:0.72 blue:0.96 alpha:1.0];
 
-    [content addSubview:WorkflowLabel(NSMakeRect(28.0, 466.0, 520.0, 30.0), @"SILVETON WORKFLOW", 22.0, NSFontWeightSemibold, accent)];
-    [content addSubview:WorkflowLabel(NSMakeRect(30.0, 442.0, 690.0, 20.0),
-                                       @"Follow the six steps from source media to the final .sv bank. Every destructive action still requires an explicit command.",
+    [content addSubview:WorkflowLabel(NSMakeRect(30.0, 504.0, 540.0, 30.0), @"SILVETON WORKFLOW", 22.0, NSFontWeightSemibold, accent)];
+    [content addSubview:WorkflowLabel(NSMakeRect(32.0, 480.0, 730.0, 20.0),
+                                       @"One clear path from source media to a finished SILVETON bank. No processing runs without an explicit command.",
                                        11.0, NSFontWeightRegular, dimText)];
 
-    const CGFloat left = 30.0;
-    const CGFloat width = 700.0;
-    const CGFloat height = 48.0;
+    const CGFloat left = 32.0;
+    const CGFloat width = 736.0;
+    const CGFloat height = 50.0;
     const CGFloat gap = 10.0;
-    CGFloat y = 378.0;
+    CGFloat y = 414.0;
 
-    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"1  MEDIA / IMPORT", self, @selector(mediaPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"1   MEDIA / IMPORT", self, @selector(mediaPressed:))];
     y -= height + gap;
-    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"2  SAMPLE EDITOR", self, @selector(samplesPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"2   SAMPLE EDITOR", self, @selector(samplesPressed:))];
     y -= height + gap;
-    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"3  MULTISAMPLE", self, @selector(multisamplePressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"3   MULTISAMPLE", self, @selector(multisamplePressed:))];
     y -= height + gap;
-    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"4  SOUND", self, @selector(soundPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"4   SOUND", self, @selector(soundPressed:))];
     y -= height + gap;
-    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"5  BANK / CATEGORY / SLOT", self, @selector(bankPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"5   BANK / CATEGORY / SLOT", self, @selector(bankPressed:))];
     y -= height + gap;
-    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"6  SAVE SILVETON BANK", self, @selector(savePressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(left, y, width, height), @"6   SAVE SILVETON BANK", self, @selector(savePressed:))];
 
-    [content addSubview:WorkflowLabel(NSMakeRect(30.0, 36.0, 90.0, 20.0), @"Tools", 12.0, NSFontWeightSemibold, mainText)];
-    [content addSubview:WorkflowButton(NSMakeRect(118.0, 28.0, 150.0, 30.0), @"Object Manager", self, @selector(objectsPressed:))];
-    [content addSubview:WorkflowButton(NSMakeRect(278.0, 28.0, 150.0, 30.0), @"Sample Converter", self, @selector(converterPressed:))];
-    [content addSubview:WorkflowButton(NSMakeRect(438.0, 28.0, 92.0, 30.0), @"New Bank", self, @selector(newPressed:))];
-    [content addSubview:WorkflowButton(NSMakeRect(540.0, 28.0, 92.0, 30.0), @"Open Bank", self, @selector(openPressed:))];
+    [content addSubview:WorkflowLabel(NSMakeRect(32.0, 42.0, 80.0, 20.0), @"Tools", 12.0, NSFontWeightSemibold, mainText)];
+    [content addSubview:WorkflowButton(NSMakeRect(112.0, 34.0, 152.0, 30.0), @"Object Manager", self, @selector(objectsPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(274.0, 34.0, 152.0, 30.0), @"Sample Converter", self, @selector(converterPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(438.0, 34.0, 100.0, 30.0), @"New Bank", self, @selector(newPressed:))];
+    [content addSubview:WorkflowButton(NSMakeRect(548.0, 34.0, 100.0, 30.0), @"Open Bank", self, @selector(openPressed:))];
 
-    _statusLabel = WorkflowLabel(NSMakeRect(30.0, 6.0, 700.0, 18.0), @"", 10.5, NSFontWeightMedium, accent);
+    _statusLabel = WorkflowLabel(NSMakeRect(32.0, 8.0, 736.0, 18.0), @"", 10.5, NSFontWeightMedium, accent);
     [content addSubview:_statusLabel];
 }
 
@@ -135,7 +135,7 @@ SVManagerDocument* WorkflowDocument(SVAppDelegate* delegate) {
     const NSUInteger multisamples = [document multisampleCount];
     const NSUInteger sounds = [document soundCount];
     const BOOL dirty = [document hasUnsavedChanges];
-    _statusLabel.stringValue = [NSString stringWithFormat:@"%lu samples · %lu multisamples · %lu SOUNDs · %@",
+    _statusLabel.stringValue = [NSString stringWithFormat:@"%lu samples   ·   %lu multisamples   ·   %lu SOUNDs   ·   %@",
                                 (unsigned long)samples,
                                 (unsigned long)multisamples,
                                 (unsigned long)sounds,
@@ -170,14 +170,7 @@ SVManagerDocument* WorkflowDocument(SVAppDelegate* delegate) {
 - (void)sv_workflow_applicationDidFinishLaunching:(NSNotification*)notification {
     [self sv_workflow_applicationDidFinishLaunching:notification];
     id main = WorkflowMainController(self);
-    NSWindow* mainWindow = [main window];
-    NSView* content = mainWindow.contentView;
-    if (content != nil) {
-        NSButton* workflow = WorkflowButton(NSMakeRect(1080.0, 758.0, 168.0, 30.0), @"WORKFLOW…", self, @selector(showWorkflowCommand:));
-        workflow.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
-        [content addSubview:workflow];
-    }
-    mainWindow.documentEdited = [WorkflowDocument(self) hasUnsavedChanges];
+    [[main window] setDocumentEdited:[WorkflowDocument(self) hasUnsavedChanges]];
 }
 
 - (void)sv_workflow_refreshAllEditors {
