@@ -21,9 +21,8 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 ## Implemented files
 
 ### `CMakeLists.txt`
-- Portable core project now declares only C/CXX globally.
-- Objective-C++ is enabled only on Apple, avoiding non-macOS core CI failures.
-- macOS remains locked to x86_64 and deployment target 10.13.
+- Portable core project declares C/CXX globally and enables Objective-C++ only on Apple.
+- macOS is locked to x86_64 and deployment target 10.13.
 - Core/tests compile with strict warnings as errors.
 - AppKit bundle target remains Apple-only.
 
@@ -56,6 +55,11 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - AIFF PCM16/PCM24 and AIFC `NONE`/`sowt` import; canonical little-endian output.
 - AIFF INST root key and valid forward sustain loop support.
 
+### `tests/ManagerCoreTests.cpp`
+- Uses always-active `require()` checks, so Release/NDEBUG cannot silently remove test assertions.
+- Builds synthetic KSF/KMP/WAV/AIFF fixtures at runtime.
+- Tests Korg pan law, skipped KMP region handling, KSF format/loop behavior, WAV root/loop metadata, AIFF endian/rate/root handling, SHA-256, `.sv` build/read round-trip, exact audio recovery, dedup, invalid reference rejection, corruption rejection and atomic write/readback.
+
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
 Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones; 48 kHz/16-bit/mono; first playable zone C4/root 60 keys 2..61; raw pan 64 preserved and maps to centre; no fake loop.
@@ -75,11 +79,12 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
 - Local full `.sv` build/read round-trip, exact audio recovery, dedup and corrupt-bank rejection PASS.
-- Audio loader compiles locally with strict `-Werror`.
-- Portable CMake blocker fixed before CI.
-- Repository-wide build is not yet claimed until regression tests and AppKit sources are committed and CI runs.
+- Release CMake build with `-Werror` builds the complete current core and `silveton_manager_tests` successfully.
+- `ctest`: 1/1 PASS.
+- Native AppKit application is not yet claimed buildable because its four CMake-referenced `.mm` source files are the next implementation block.
 
 ## Next
-1. Commit regression tests and obtain clean core build.
-2. Native AppKit GUI with real Import/Build Bank actions.
-3. Batch import, one-click bank build, tablet transfer.
+1. Implement native AppKit GUI with real Import and Build Bank actions.
+2. Build the Intel macOS application target.
+3. Replace the empty GitHub Actions workflow and run Intel macOS CI.
+4. Add batch workflow polish and tablet transfer.
