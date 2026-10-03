@@ -37,37 +37,41 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 ### `include/silveton/manager/SampleHash.h`
 ### `src/core/SampleHash.cpp`
 - Deterministic FNV-1a sample-audio hash including format metadata.
-- Hash only selects dedup candidates; exact byte equality is still required.
+- Hash only selects dedup candidates; exact byte equality remains mandatory.
 
 ### `include/silveton/manager/SvBankFormat.h`
-- Locks `.sv` major format version 1 and fixed 256-byte header.
-- Defines seven indexed sections: SOUND, SOUND layers, multisamples, samples, zones, strings, audio.
-- Defines fixed-size binary record contracts and SHA-256 payload integrity field.
-- Audio offsets are relative to the dedicated audio section so tablet runtime can random-access/stream without rebuilding the library.
+- `.sv` major version 1, fixed 256-byte header and seven indexed sections.
+- Fixed record contracts for SOUNDs, layers, multisamples, samples and zones.
+
+### `src/core/SvBankFormat.cpp`
+- Explicit little-endian serialization/deserialization; no host-struct binary dumping.
+- Fixed record padding makes the format architecture-independent between Intel Manager and ARM tablet.
+- Implements internal SHA-256 with no external dependency.
+- Header parser rejects wrong magic, unsupported major version, truncated header/section table and invalid header size.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
-Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones; 48 kHz/16-bit/mono; first playable zone C4/root 60 keys 2..61; raw pan 64 preserved and maps to centre; no fake loop is created.
+Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones; 48 kHz/16-bit/mono; first playable zone C4/root 60 keys 2..61; raw pan 64 preserved and maps to centre; no fake loop.
 
-## SILVETON_BANK.sv layout
-Current locked v1 direction:
-1. 256-byte header + version/counts/section offsets/SHA-256.
+## SILVETON_BANK.sv v1 layout
+1. Fixed 256-byte header: magic/version/counts/section offsets/SHA-256.
 2. SOUND records.
 3. SOUND layer records.
 4. Multisample records.
 5. Sample records.
 6. Zone records.
-7. Deduplicated null-terminated string table.
-8. Audio payload section (planned 4096-byte alignment for streaming).
+7. Deduplicated string table.
+8. Audio payload section; builder aligns this section to 4096 bytes for random access/streaming.
 
 ## Verification status
 - Development branch exists; `main` untouched.
 - Strict local SALEAS Korg import smoke test PASS.
-- In-progress `.sv` implementation locally passes SHA-256 known vector, build/read round-trip, exact audio recovery, duplicate-audio elimination, and corruption rejection.
+- SHA-256 implementation matches the standard `abc` test vector locally.
+- In-progress bank builder/reader locally passes round-trip, exact audio recovery, dedup and corruption rejection; those files are next to commit.
 - Repository-wide build is not yet claimed until all CMake-referenced sources and tests are committed and CI runs.
 
 ## Next
-1. Commit `.sv` format serializer, builder, reader.
+1. Commit `.sv` builder/reader.
 2. WAV/AIFF importer.
 3. Regression tests + clean core build.
 4. Native AppKit GUI.
