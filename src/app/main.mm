@@ -6,6 +6,7 @@
 - (void)saveBankAsCommand:(id)sender;
 - (void)showMediaCommand:(id)sender;
 - (void)showObjectManagerCommand:(id)sender;
+- (void)showConverterCommand:(id)sender;
 @end
 
 namespace {
@@ -65,6 +66,13 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     objectItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     objectItem.target = delegate;
     [fileMenu addItem:objectItem];
+
+    NSMenuItem* converterItem = [[NSMenuItem alloc] initWithTitle:@"Sample Converter…"
+                                                          action:@selector(showConverterCommand:)
+                                                   keyEquivalent:@"K"];
+    converterItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    converterItem.target = delegate;
+    [fileMenu addItem:converterItem];
 }
 
 } // namespace
