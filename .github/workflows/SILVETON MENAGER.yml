@@ -8,23 +8,21 @@ on:
 
 jobs:
   build-test-package:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16.4 and verify Rosetta
+      - name: Select Xcode 16.4
         shell: bash
         run: |
           set -euo pipefail
-          echo "Runner architecture: $(uname -m)"
           test -d /Applications/Xcode_16.4.app
           sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
           cmake --version
-          arch -x86_64 /usr/bin/true
 
       - name: Configure Release x86_64 macOS 10.13
         shell: bash
