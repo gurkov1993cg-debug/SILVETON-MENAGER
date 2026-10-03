@@ -24,38 +24,31 @@ The Android tablet remains the live-performance runtime and must not rebuild KMP
 ## Current implemented repository files
 
 ### `CMakeLists.txt`
-- Defines the Intel x86_64 / macOS 10.13 build contract.
-- Uses C++17.
-- Declares `silveton_manager_core` as the platform-independent Manager core library.
-- Declares the native AppKit application target `SILVETON Manager`.
-- Declares the Manager core regression-test target.
-- Enables strict compiler warnings for the core and tests.
+- Intel x86_64 / macOS 10.13 / C++17 build contract.
+- Platform-independent Manager core, native AppKit target and regression-test target.
+- Strict compiler warnings enabled.
 
 ### `include/silveton/manager/ManagerTypes.h`
-- Defines the Manager-side import and bank model.
-- Defines canonical bank audio encodings: PCM16LE, PCM24LE and Float32LE.
-- Defines sample metadata, loop metadata, multisample zones, SOUND layers and bank/page/slot addresses.
-- Preserves raw Korg RLP1 pan/level/filter source values instead of replacing them with undocumented conversions.
-- Keeps canonical audio bytes separate from source-path metadata so later `.sv` building can deduplicate payloads safely.
+- Manager import/bank model, canonical PCM encodings, loops, samples, zones, SOUND layers and bank/page/slot addressing.
+- Raw Korg RLP1 pan/level/filter values are preserved without undocumented transfer functions.
 
 ### `include/silveton/manager/KorgImporter.h`
-- Declares KSF, KMP and KSC import results and entry points.
-- Exposes normalized pan only as an editor/runtime view while preserving the original raw Korg pan value.
-- Keeps import warnings separate from hard errors so missing/unsupported regions cannot silently become fake samples.
+- KSF/KMP/KSC import contract with separate hard errors and warnings.
 
 ### `src/core/KorgImporter.cpp`
-- Implements chunk-safe KSF/KMP/KSC parsing.
-- KSF import validates SMP1/SMD1, sample rate, channels, 16-bit uncompressed payload length and loop bounds.
-- Converts KSF big-endian PCM16 into canonical little-endian PCM16 for `.sv` storage without resampling.
-- KMP import preserves skipped/internal regions, exact key ranges, root key, tune, non-transpose and raw pan/level/filter metadata.
-- Resolves external KSF files beside the KMP or in the common same-name nested directory.
-- KSC import resolves relative KMP/KSF entries and avoids duplicate standalone KSF imports already referenced by a KMP.
+- Chunk-safe KSF/KMP/KSC parsing.
+- KSF big-endian PCM16 becomes canonical little-endian PCM16 without resampling.
+- Exact KMP zone/root/tune/non-transpose and raw source metadata are retained.
+- External KSF resolution and KSC relative dependency loading are implemented.
 
 ### `include/silveton/manager/SampleHash.h`
-- Declares deterministic FNV-1a hashing for canonical sample audio plus format metadata.
-- Hashing is used as a fast dedup candidate key; exact byte comparison remains mandatory before payload sharing.
+- Deterministic sample-audio hash contract.
 
-## Planned source layout already reserved by CMake
+### `src/core/SampleHash.cpp`
+- FNV-1a 64-bit hashing includes sample rate, channels, encoding, bit depth, frame count and canonical audio bytes.
+- Hash is only a fast dedup candidate key; bank builder still requires exact metadata/audio byte equality before sharing payload data.
+
+## Planned/active source layout
 
 ### Core
 - `include/silveton/manager/...`
@@ -76,25 +69,25 @@ The Android tablet remains the live-performance runtime and must not rebuild KMP
 - `tests/ManagerCoreTests.cpp`
 
 ## Donor source policy
-The Manager reuses only proven sampler-side parsing/loading concepts that are appropriate for offline desktop preparation. The current SILVETON Sampler R4 source is the donor reference for KMP/KSF/KSC import, WAV/AIFF loading and compatible sample/multisample metadata. Android runtime, Direct-ALSA, Direct-MIDI, COMBI GUI and realtime tablet code are not copied into Manager.
+The Manager reuses only proven sampler-side parsing/loading concepts appropriate for offline desktop preparation. Android runtime, Direct-ALSA, Direct-MIDI, COMBI GUI and realtime tablet code are not copied into Manager.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` plus `MS000000.KSF` ... `MS000012.KSF` is the first real import fixture.
-Verified facts: 14 RLP1 regions total; region 0 is `SKIPPEDSAMPL` for keys 0..1; 13 external KSF samples produce 13 zones; files are 48 kHz/16-bit/mono; first playable zone is C4/root 60 at keys 2..61; playable raw pan is 64 and is preserved; no false forward loop is created.
+Verified: 14 RLP1 regions; region 0 is `SKIPPEDSAMPL` for keys 0..1; 13 external KSF files produce 13 playable zones; 48 kHz/16-bit/mono; first playable zone C4/root 60 on keys 2..61; playable raw pan is 64 and is preserved/normalized to centre; no false forward loop is created.
 
-## SILVETON_BANK.sv contract direction
-One master bank remains the target. Logical sections: header, SOUND index, SOUND layers, multisample index, sample index, zone records, strings, deduplicated audio and integrity/version data.
+## SILVETON_BANK.sv direction
+One master bank. Logical sections: fixed header, SOUND records, SOUND layers, multisample records, sample records, zone records, string table, deduplicated audio payload and integrity/version data.
 
 ## Verification status
 - Development branch exists and `main` remains untouched.
-- CMake baseline, Manager data model, Korg importer and hash contract are committed.
+- CMake baseline, Manager data model, Korg importer and deterministic sample hash are committed.
 - Local strict Korg smoke test passes against SALEAS-GRK.
-- Local in-progress `.sv` core test already passes SHA-256, build/read round-trip, exact audio recovery, duplicate audio elimination and corrupt-bank rejection; those format/builder/reader files are being committed next.
+- Local in-progress `.sv` core test passes SHA-256 known vector, build/read round-trip, exact audio recovery, duplicate audio elimination and corrupt-bank rejection; format/builder/reader files are being committed next.
 - Repository-wide build is not yet claimed until every CMake-referenced source exists and CI runs.
 
 ## Next implementation order
-1. Commit sample hash implementation and `.sv` format/builder/reader.
+1. Commit `.sv` format/builder/reader.
 2. Adapt WAV/AIFF import.
-3. Commit regression tests and make the core target build cleanly.
-4. Build native AppKit GUI around the proven core.
+3. Commit regression tests and make core target build cleanly.
+4. Build native AppKit GUI around proven core.
 5. Add batch import, one-click bank build and tablet transfer workflow.
