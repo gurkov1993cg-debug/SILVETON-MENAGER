@@ -160,26 +160,43 @@ AudioLoadResult AudioFileLoader::loadAiff(const std::string& path) {
     const std::uint16_t channels=be16(comm); const std::uint32_t frames=be32(comm+2U); const std::uint16_t bits=be16(comm+6U);
     const double srDouble=extended80(comm+8U); if(!(srDouble>=1.0&&srDouble<=768000.0))return {{} ,"Invalid AIFF sample rate"};
     const std::uint32_t sampleRate=static_cast<std::uint32_t>(std::llround(srDouble));
-    if(channels==0U||channels>2U||(bits!=16U&&bits!=24U))return {{} ,"AIFF supports PCM16/PCM24 mono/stereo only"};
+    if(channels==0U||channels>2U)return {{} ,"Unsupported AIFF channel configuration"};
+
     bool sourceLittleEndian=false;
+    AudioEncoding encoding{};
     if(aifc){
         if(commSize<22U)return {{} ,"AIFC COMM chunk is too short"};
-        if(std::memcmp(comm+18U,"NONE",4U)==0)sourceLittleEndian=false;
-        else if(std::memcmp(comm+18U,"sowt",4U)==0)sourceLittleEndian=true;
-        else return {{} ,"Unsupported AIFC compression"};
+        if(std::memcmp(comm+18U,"NONE",4U)==0){
+            if(bits==16U)encoding=AudioEncoding::Pcm16LE;
+            else if(bits==24U)encoding=AudioEncoding::Pcm24LE;
+            else return {{} ,"AIFC NONE supports PCM16/PCM24 only"};
+        } else if(std::memcmp(comm+18U,"sowt",4U)==0){
+            if(bits==16U)encoding=AudioEncoding::Pcm16LE;
+            else if(bits==24U)encoding=AudioEncoding::Pcm24LE;
+            else return {{} ,"AIFC sowt supports PCM16/PCM24 only"};
+            sourceLittleEndian=true;
+        } else if(std::memcmp(comm+18U,"fl32",4U)==0 && bits==32U){
+            encoding=AudioEncoding::Float32LE;
+        } else return {{} ,"Unsupported AIFC compression"};
+    } else {
+        if(bits==16U)encoding=AudioEncoding::Pcm16LE;
+        else if(bits==24U)encoding=AudioEncoding::Pcm24LE;
+        else return {{} ,"AIFF supports PCM16/PCM24 only"};
     }
+
     const std::uint32_t offset=be32(ssnd); const std::size_t pcmStart=8U+offset;
     if(pcmStart>ssndSize)return {{} ,"Invalid AIFF SSND offset"};
     const std::uint32_t bps=bits/8U; const std::uint64_t expected=static_cast<std::uint64_t>(frames)*channels*bps;
     if(expected>ssndSize-pcmStart)return {{} ,"AIFF SSND payload is truncated"};
     ImportedSample out{}; out.name=stemName(path); out.sourcePath=path; out.sourceIdentity=identity(path);
-    out.sampleRate=sampleRate; out.channels=channels; out.bitsPerSample=static_cast<std::uint8_t>(bits); out.encoding=bits==16U?AudioEncoding::Pcm16LE:AudioEncoding::Pcm24LE; out.totalFrames=frames;
+    out.sampleRate=sampleRate; out.channels=channels; out.bitsPerSample=static_cast<std::uint8_t>(bits); out.encoding=encoding; out.totalFrames=frames;
     const std::uint8_t* source=ssnd+pcmStart; out.audioData.resize(static_cast<std::size_t>(expected));
     if(sourceLittleEndian)std::copy(source,source+expected,out.audioData.begin());
     else for(std::size_t i=0;i<expected;i+=bps)for(std::uint32_t b=0;b<bps;++b)out.audioData[i+b]=source[i+(bps-1U-b)];
 
     if(inst!=nullptr&&instSize>=20U){
         out.rootKey=inst[0U];
+        out.fineTuneCents=static_cast<float>(static_cast<std::int8_t>(inst[1U]));
         if(mark!=nullptr&&markSize>=2U){
             std::unordered_map<std::uint16_t,std::uint32_t> markers; std::size_t mp=2U; const std::uint16_t count=be16(mark);
             for(std::uint16_t i=0;i<count&&mp+7U<=markSize;++i){
