@@ -29,24 +29,19 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata.
 - `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SHA-256, `.sv` round-trip/dedup/corruption/atomic write.
 
-### `src/app/ManagerDocument.mm`
-- Real project owner, imports supported formats and builds the actual bank.
-- KMP/KSC multisamples become real SOUND records with deterministic Bank/Page/Slot addresses.
-- Standalone samples become real one-zone multisamples and SOUNDs.
-- Real clear/status/list/build operations only.
+### Native AppKit application
+- `src/app/ManagerDocument.mm`: real imports, real SOUND creation, real status/list/clear, real atomic `.sv` build.
+- `src/app/MainWindowController.mm`: real Import/Clear/Build controls and real project table/status/path; no fake controls/meters.
+- `src/app/AppDelegate.mm`: owns/shows the Manager window and application lifecycle.
+- `src/app/main.mm`: native NSApplication entry/event loop.
 
-### `src/app/MainWindowController.mm`
-- Native AppKit window with real `Import Samples…`, `Clear`, and `Build SILVETON_BANK.sv…` controls.
-- Table/status/output path are driven by real ManagerDocument data; no fake meters/status values.
-
-### `src/app/AppDelegate.mm`
-- Owns the main window controller for the full application lifetime.
-- Shows/centers the real Manager window at launch and activates the application.
-- Terminates after the last Manager window closes.
-
-### `src/app/main.mm`
-- Creates the native `NSApplication`, installs the real app delegate, selects regular application activation policy and runs the AppKit event loop.
-- No storyboard, Swift runtime or browser wrapper is required.
+### `.github/workflows/SILVETON MENAGER.yml`
+- Real Intel build workflow replaces the previously empty file.
+- Runner: `macos-15-intel`.
+- Xcode: locked to 16.4.
+- Configure/build: Release, x86_64 only, deployment target 10.13.
+- Builds/runs core regression tests before building the AppKit application.
+- Verifies Mach-O architecture and deployment target, validates Info.plist, ad-hoc signs, `codesign --verify --deep --strict`, packages the full `.app` with `ditto`, records SHA256 and uploads the Intel artifact.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -68,10 +63,10 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - SHA-256 standard `abc` vector PASS.
 - Local `.sv` round-trip/exact-audio/dedup/corruption tests PASS.
 - Release core + tests build with `-Werror`; `ctest` 1/1 PASS.
-- All four CMake-referenced AppKit `.mm` source files now exist.
-- Full native application build is not yet claimed until the first Intel macOS compile/link/package run completes.
+- All CMake-referenced AppKit sources and the Intel CI workflow now exist.
+- Full native application success is not claimed until the Intel GitHub run completes; fixes will follow only the real failed step/log if it fails.
 
 ## Next
-1. Run first Intel/macOS build and fix actual compiler/link findings.
-2. Replace the empty GitHub Actions workflow with Intel macOS CI and package the `.app`.
+1. Inspect the first Intel GitHub Actions run and fix only real failures.
+2. Once green, verify/download packaged `.app` artifact and preserve it as the proven Manager baseline.
 3. Add folder/batch workflow polish and tablet transfer.
