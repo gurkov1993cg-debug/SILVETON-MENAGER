@@ -112,7 +112,7 @@ void appendSingleSample(BankProject& project, ImportedSample sample) {
 
 std::string joinMessages(const std::vector<std::string>& messages) {
     std::ostringstream stream;
-    for (std::size_t i = 0; i < messages.size(); ++i) {
+    for (std::size_t i = 0U; i < messages.size(); ++i) {
         if (i != 0U) stream << '\n';
         stream << messages[i];
     }
@@ -121,6 +121,15 @@ std::string joinMessages(const std::vector<std::string>& messages) {
 
 bool validSampleIndex(const BankProject& project, NSUInteger index) noexcept {
     return static_cast<std::size_t>(index) < project.samples.size();
+}
+
+bool validMultisampleIndex(const BankProject& project, NSUInteger index) noexcept {
+    return static_cast<std::size_t>(index) < project.multisamples.size();
+}
+
+bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSUInteger zoneIndex) noexcept {
+    if (!validMultisampleIndex(project, multisampleIndex)) return false;
+    return static_cast<std::size_t>(zoneIndex) < project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones.size();
 }
 
 } // namespace
@@ -150,6 +159,28 @@ bool validSampleIndex(const BankProject& project, NSUInteger index) noexcept {
 - (BOOL)setRootKeyForSampleAtIndex:(NSUInteger)index rootKey:(uint8_t)rootKey error:(NSString**)error;
 - (BOOL)setFineTuneForSampleAtIndex:(NSUInteger)index cents:(float)cents error:(NSString**)error;
 - (uint64_t)nearestZeroCrossingForSampleAtIndex:(NSUInteger)index frame:(uint64_t)frame radius:(uint64_t)radius;
+
+- (NSUInteger)multisampleCount;
+- (NSArray<NSString*>*)multisampleDisplayRows;
+- (NSDictionary<NSString*, id>*)multisampleStateAtIndex:(NSUInteger)index;
+- (NSArray<NSDictionary<NSString*, id>*>*)zoneStatesForMultisampleAtIndex:(NSUInteger)index;
+- (BOOL)createMultisampleNamed:(NSString*)name sampleIndexes:(NSIndexSet*)sampleIndexes error:(NSString**)error createdIndex:(NSUInteger*)createdIndex;
+- (BOOL)renameMultisampleAtIndex:(NSUInteger)index name:(NSString*)name error:(NSString**)error;
+- (BOOL)addZoneToMultisampleAtIndex:(NSUInteger)multisampleIndex sampleIndex:(NSUInteger)sampleIndex error:(NSString**)error;
+- (BOOL)removeZoneFromMultisampleAtIndex:(NSUInteger)multisampleIndex zoneIndex:(NSUInteger)zoneIndex error:(NSString**)error;
+- (BOOL)updateZoneAtMultisampleIndex:(NSUInteger)multisampleIndex
+                           zoneIndex:(NSUInteger)zoneIndex
+                         sampleIndex:(NSUInteger)sampleIndex
+                              keyLow:(NSUInteger)keyLow
+                             keyHigh:(NSUInteger)keyHigh
+                         velocityLow:(NSUInteger)velocityLow
+                        velocityHigh:(NSUInteger)velocityHigh
+                             rootKey:(NSUInteger)rootKey
+                  transposeSemitones:(NSInteger)transposeSemitones
+                           tuneCents:(float)tuneCents
+                              gainDb:(float)gainDb
+                                 pan:(float)pan
+                               error:(NSString**)error;
 @end
 
 @implementation SVManagerDocument
@@ -422,6 +453,238 @@ bool validSampleIndex(const BankProject& project, NSUInteger index) noexcept {
 - (uint64_t)nearestZeroCrossingForSampleAtIndex:(NSUInteger)index frame:(uint64_t)frame radius:(uint64_t)radius {
     if (!validSampleIndex(_project, index)) return frame;
     return SampleEditor::nearestZeroCrossing(_project.samples[static_cast<std::size_t>(index)], frame, radius);
+}
+
+- (NSUInteger)multisampleCount {
+    return static_cast<NSUInteger>(_project.multisamples.size());
+}
+
+- (NSArray<NSString*>*)multisampleDisplayRows {
+    NSMutableArray<NSString*>* rows = [NSMutableArray arrayWithCapacity:_project.multisamples.size()];
+    for (std::size_t i = 0U; i < _project.multisamples.size(); ++i) {
+        const auto& multisample = _project.multisamples[i];
+        NSString* name = nsString(multisample.name.empty() ? std::string("Unnamed Multisample") : multisample.name);
+        [rows addObject:[NSString stringWithFormat:@"%03zu   %@   ·   %zu zone%@",
+                         i + 1U, name, multisample.zones.size(), multisample.zones.size() == 1U ? @"" : @"s"]];
+    }
+    return rows;
+}
+
+- (NSDictionary<NSString*, id>*)multisampleStateAtIndex:(NSUInteger)index {
+    if (!validMultisampleIndex(_project, index)) return nil;
+    const auto& multisample = _project.multisamples[static_cast<std::size_t>(index)];
+    return @{
+        @"name": nsString(multisample.name),
+        @"sourceIdentity": nsString(multisample.sourceIdentity),
+        @"zoneCount": [NSNumber numberWithUnsignedLongLong:static_cast<unsigned long long>(multisample.zones.size())]
+    };
+}
+
+- (NSArray<NSDictionary<NSString*, id>*>*)zoneStatesForMultisampleAtIndex:(NSUInteger)index {
+    if (!validMultisampleIndex(_project, index)) return @[];
+    const auto& multisample = _project.multisamples[static_cast<std::size_t>(index)];
+    NSMutableArray<NSDictionary<NSString*, id>*>* rows = [NSMutableArray arrayWithCapacity:multisample.zones.size()];
+    for (std::size_t zoneIndex = 0U; zoneIndex < multisample.zones.size(); ++zoneIndex) {
+        const auto& zone = multisample.zones[zoneIndex];
+        NSString* sampleName = @"Invalid sample";
+        if (zone.sampleIndex < _project.samples.size()) {
+            sampleName = nsString(_project.samples[zone.sampleIndex].name);
+        }
+        [rows addObject:@{
+            @"zoneIndex": [NSNumber numberWithUnsignedLongLong:static_cast<unsigned long long>(zoneIndex)],
+            @"sampleIndex": [NSNumber numberWithUnsignedInt:zone.sampleIndex],
+            @"sampleName": sampleName,
+            @"keyLow": [NSNumber numberWithUnsignedInt:zone.keyLow],
+            @"keyHigh": [NSNumber numberWithUnsignedInt:zone.keyHigh],
+            @"velocityLow": [NSNumber numberWithUnsignedInt:zone.velocityLow],
+            @"velocityHigh": [NSNumber numberWithUnsignedInt:zone.velocityHigh],
+            @"rootKey": [NSNumber numberWithUnsignedInt:zone.rootKey],
+            @"transposeSemitones": [NSNumber numberWithInteger:zone.transposeSemitones],
+            @"tuneCents": [NSNumber numberWithFloat:zone.tuneCents],
+            @"gainDb": [NSNumber numberWithFloat:zone.gainDb],
+            @"pan": [NSNumber numberWithFloat:zone.pan],
+            @"oneShot": [NSNumber numberWithBool:zone.oneShot],
+            @"reverse": [NSNumber numberWithBool:zone.reverse],
+            @"nonTranspose": [NSNumber numberWithBool:zone.nonTranspose]
+        }];
+    }
+    return rows;
+}
+
+- (BOOL)createMultisampleNamed:(NSString*)name sampleIndexes:(NSIndexSet*)sampleIndexes error:(NSString**)error createdIndex:(NSUInteger*)createdIndex {
+    if (sampleIndexes == nil || sampleIndexes.count == 0U) {
+        if (error != nullptr) *error = @"Select at least one sample for the new multisample.";
+        return NO;
+    }
+
+    std::vector<std::size_t> indexes;
+    indexes.reserve(sampleIndexes.count);
+    NSUInteger current = sampleIndexes.firstIndex;
+    while (current != NSNotFound) {
+        if (!validSampleIndex(_project, current)) {
+            if (error != nullptr) *error = @"The selected sample list contains an invalid sample index.";
+            return NO;
+        }
+        indexes.push_back(static_cast<std::size_t>(current));
+        current = [sampleIndexes indexGreaterThanIndex:current];
+    }
+
+    std::sort(indexes.begin(), indexes.end(), [this](std::size_t a, std::size_t b) {
+        const auto rootA = _project.samples[a].rootKey;
+        const auto rootB = _project.samples[b].rootKey;
+        return rootA == rootB ? a < b : rootA < rootB;
+    });
+
+    for (std::size_t i = 1U; i < indexes.size(); ++i) {
+        if (_project.samples[indexes[i - 1U]].rootKey == _project.samples[indexes[i]].rootKey) {
+            if (error != nullptr) *error = @"Automatic key mapping requires unique Root Key values. Change one of the duplicate sample Root Keys first.";
+            return NO;
+        }
+    }
+
+    ImportedMultisample multisample{};
+    NSString* trimmed = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    const std::string multisampleName = trimmed.length == 0U ? std::string("New Multisample") : std::string(trimmed.UTF8String);
+    multisample.name = multisampleName;
+    multisample.sourceIdentity = std::string("manager:multisample:") + std::to_string(_project.multisamples.size());
+    multisample.zones.reserve(indexes.size());
+
+    std::uint16_t nextLow = 0U;
+    for (std::size_t i = 0U; i < indexes.size(); ++i) {
+        const auto sampleIndex = indexes[i];
+        const auto root = _project.samples[sampleIndex].rootKey;
+        std::uint16_t high = 127U;
+        if (i + 1U < indexes.size()) {
+            const auto nextRoot = _project.samples[indexes[i + 1U]].rootKey;
+            high = static_cast<std::uint16_t>((static_cast<unsigned int>(root) + static_cast<unsigned int>(nextRoot)) / 2U);
+        }
+
+        ImportedZone zone{};
+        zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex);
+        zone.keyLow = static_cast<std::uint8_t>(nextLow);
+        zone.keyHigh = static_cast<std::uint8_t>(high);
+        zone.velocityLow = 1U;
+        zone.velocityHigh = 127U;
+        zone.rootKey = root;
+        multisample.zones.push_back(zone);
+        nextLow = static_cast<std::uint16_t>(high + 1U);
+    }
+
+    const std::uint32_t multisampleIndex = static_cast<std::uint32_t>(_project.multisamples.size());
+    _project.multisamples.push_back(std::move(multisample));
+    appendSoundForMultisample(_project, multisampleIndex, multisampleName);
+    if (createdIndex != nullptr) *createdIndex = static_cast<NSUInteger>(multisampleIndex);
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)renameMultisampleAtIndex:(NSUInteger)index name:(NSString*)name error:(NSString**)error {
+    if (!validMultisampleIndex(_project, index)) {
+        if (error != nullptr) *error = @"No multisample is selected.";
+        return NO;
+    }
+    NSString* trimmed = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0U) {
+        if (error != nullptr) *error = @"Multisample name cannot be empty.";
+        return NO;
+    }
+    _project.multisamples[static_cast<std::size_t>(index)].name = std::string(trimmed.UTF8String);
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)addZoneToMultisampleAtIndex:(NSUInteger)multisampleIndex sampleIndex:(NSUInteger)sampleIndex error:(NSString**)error {
+    if (!validMultisampleIndex(_project, multisampleIndex)) {
+        if (error != nullptr) *error = @"No multisample is selected.";
+        return NO;
+    }
+    if (!validSampleIndex(_project, sampleIndex)) {
+        if (error != nullptr) *error = @"Select a valid sample to assign to the new zone.";
+        return NO;
+    }
+
+    ImportedZone zone{};
+    zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex);
+    zone.rootKey = _project.samples[static_cast<std::size_t>(sampleIndex)].rootKey;
+    zone.keyLow = zone.rootKey;
+    zone.keyHigh = zone.rootKey;
+    zone.velocityLow = 1U;
+    zone.velocityHigh = 127U;
+    _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones.push_back(zone);
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)removeZoneFromMultisampleAtIndex:(NSUInteger)multisampleIndex zoneIndex:(NSUInteger)zoneIndex error:(NSString**)error {
+    if (!validZoneIndex(_project, multisampleIndex, zoneIndex)) {
+        if (error != nullptr) *error = @"No valid zone is selected.";
+        return NO;
+    }
+    auto& zones = _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones;
+    if (zones.size() <= 1U) {
+        if (error != nullptr) *error = @"A multisample must contain at least one zone.";
+        return NO;
+    }
+    zones.erase(zones.begin() + static_cast<std::ptrdiff_t>(zoneIndex));
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)updateZoneAtMultisampleIndex:(NSUInteger)multisampleIndex
+                           zoneIndex:(NSUInteger)zoneIndex
+                         sampleIndex:(NSUInteger)sampleIndex
+                              keyLow:(NSUInteger)keyLow
+                             keyHigh:(NSUInteger)keyHigh
+                         velocityLow:(NSUInteger)velocityLow
+                        velocityHigh:(NSUInteger)velocityHigh
+                             rootKey:(NSUInteger)rootKey
+                  transposeSemitones:(NSInteger)transposeSemitones
+                           tuneCents:(float)tuneCents
+                              gainDb:(float)gainDb
+                                 pan:(float)pan
+                               error:(NSString**)error {
+    if (!validZoneIndex(_project, multisampleIndex, zoneIndex)) {
+        if (error != nullptr) *error = @"No valid zone is selected.";
+        return NO;
+    }
+    if (!validSampleIndex(_project, sampleIndex)) {
+        if (error != nullptr) *error = @"Zone sample assignment is invalid.";
+        return NO;
+    }
+    if (keyLow > 127U || keyHigh > 127U || keyLow > keyHigh) {
+        if (error != nullptr) *error = @"Key range must be 0...127 and Low cannot exceed High.";
+        return NO;
+    }
+    if (velocityLow < 1U || velocityLow > 127U || velocityHigh < 1U || velocityHigh > 127U || velocityLow > velocityHigh) {
+        if (error != nullptr) *error = @"Velocity range must be 1...127 and Low cannot exceed High.";
+        return NO;
+    }
+    if (rootKey > 127U) {
+        if (error != nullptr) *error = @"Root Key must be 0...127.";
+        return NO;
+    }
+    if (transposeSemitones < -127 || transposeSemitones > 127) {
+        if (error != nullptr) *error = @"Transpose must be between -127 and +127 semitones.";
+        return NO;
+    }
+    if (!std::isfinite(tuneCents) || !std::isfinite(gainDb) || !std::isfinite(pan) || pan < -1.0F || pan > 1.0F) {
+        if (error != nullptr) *error = @"Tune/Gain must be finite and Pan must be between -1.0 and +1.0.";
+        return NO;
+    }
+
+    auto& zone = _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones[static_cast<std::size_t>(zoneIndex)];
+    zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex);
+    zone.keyLow = static_cast<std::uint8_t>(keyLow);
+    zone.keyHigh = static_cast<std::uint8_t>(keyHigh);
+    zone.velocityLow = static_cast<std::uint8_t>(velocityLow);
+    zone.velocityHigh = static_cast<std::uint8_t>(velocityHigh);
+    zone.rootKey = static_cast<std::uint8_t>(rootKey);
+    zone.transposeSemitones = static_cast<std::int8_t>(transposeSemitones);
+    zone.tuneCents = tuneCents;
+    zone.gainDb = gainDb;
+    zone.pan = pan;
+    clearError(error);
+    return YES;
 }
 
 @end
