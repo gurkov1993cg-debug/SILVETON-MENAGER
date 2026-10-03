@@ -1,0 +1,35 @@
+name: Package latest SILVETON Manager source
+
+on:
+  push:
+    branches:
+      - silveton-manager-development
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          zip -r "artifact/SILVETON-MANAGER-LATEST-SOURCE.zip" . \
+            -x '.git/*' \
+               '.github/workflows/package-source-temp.yml' \
+               'artifact/*'
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: SILVETON-MANAGER-LATEST-SOURCE
+          path: artifact/SILVETON-MANAGER-LATEST-SOURCE.zip
+          if-no-files-found: error
+          retention-days: 1
