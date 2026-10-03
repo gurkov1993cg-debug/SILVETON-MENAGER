@@ -82,6 +82,7 @@ if(APPLE)
         "-framework Foundation"
         "-framework CoreFoundation"
         "-framework AudioToolbox"
+        "-framework QuartzCore"
     )
 
     target_compile_options(SILVETON_MANAGER PRIVATE -fobjc-arc)
