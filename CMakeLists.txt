@@ -57,6 +57,7 @@ if(APPLE)
         src/app/AppUnsavedChanges.mm
         src/app/BankFileCommands.mm
         src/app/ConverterController.mm
+        src/app/GUIIntegration.mm
         src/app/MediaController.mm
         src/app/MediaUnsavedGuard.mm
         src/app/WorkflowController.mm
