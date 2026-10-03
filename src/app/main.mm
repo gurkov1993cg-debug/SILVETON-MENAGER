@@ -5,12 +5,30 @@
 - (void)openBankCommand:(id)sender;
 - (void)saveBankCommand:(id)sender;
 - (void)saveBankAsCommand:(id)sender;
+- (void)showSampleEditorCommand:(id)sender;
 - (void)showMediaCommand:(id)sender;
+- (void)showMultisampleEditor:(id)sender;
+- (void)showSoundEditor:(id)sender;
+- (void)showBankOrganizer:(id)sender;
 - (void)showObjectManagerCommand:(id)sender;
 - (void)showConverterCommand:(id)sender;
+- (void)showWorkflowCommand:(id)sender;
 @end
 
 namespace {
+
+NSMenuItem* AddMenuCommand(NSMenu* menu,
+                           NSString* title,
+                           SEL action,
+                           NSString* keyEquivalent,
+                           NSEventModifierFlags modifiers,
+                           id target) {
+    NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:keyEquivalent ?: @""];
+    item.target = target;
+    if (keyEquivalent.length > 0U) item.keyEquivalentModifierMask = modifiers;
+    [menu addItem:item];
+    return item;
+}
 
 void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     NSMenu* mainMenu = [[NSMenu alloc] initWithTitle:@""];
@@ -31,55 +49,30 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
     fileItem.submenu = fileMenu;
 
-    NSMenuItem* newItem = [[NSMenuItem alloc] initWithTitle:@"New SILVETON Bank"
-                                                    action:@selector(newBankCommand:)
-                                             keyEquivalent:@"n"];
-    newItem.target = delegate;
-    [fileMenu addItem:newItem];
-
-    NSMenuItem* openItem = [[NSMenuItem alloc] initWithTitle:@"Open SILVETON Bank…"
-                                                     action:@selector(openBankCommand:)
-                                              keyEquivalent:@"o"];
-    openItem.target = delegate;
-    [fileMenu addItem:openItem];
-
+    AddMenuCommand(fileMenu, @"New SILVETON Bank", @selector(newBankCommand:), @"n", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(fileMenu, @"Open SILVETON Bank…", @selector(openBankCommand:), @"o", NSEventModifierFlagCommand, delegate);
     [fileMenu addItem:[NSMenuItem separatorItem]];
-
-    NSMenuItem* saveItem = [[NSMenuItem alloc] initWithTitle:@"Save Bank"
-                                                     action:@selector(saveBankCommand:)
-                                              keyEquivalent:@"s"];
-    saveItem.target = delegate;
-    [fileMenu addItem:saveItem];
-
-    NSMenuItem* saveAsItem = [[NSMenuItem alloc] initWithTitle:@"Save Bank As…"
-                                                       action:@selector(saveBankAsCommand:)
-                                                keyEquivalent:@"S"];
-    saveAsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    saveAsItem.target = delegate;
-    [fileMenu addItem:saveAsItem];
-
+    AddMenuCommand(fileMenu, @"Save Bank", @selector(saveBankCommand:), @"s", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(fileMenu, @"Save Bank As…", @selector(saveBankAsCommand:), @"S", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
     [fileMenu addItem:[NSMenuItem separatorItem]];
+    AddMenuCommand(fileMenu, @"MEDIA Browser…", @selector(showMediaCommand:), @"M", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
+    AddMenuCommand(fileMenu, @"Object Manager…", @selector(showObjectManagerCommand:), @"J", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
+    AddMenuCommand(fileMenu, @"Sample Converter…", @selector(showConverterCommand:), @"K", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
 
-    NSMenuItem* mediaItem = [[NSMenuItem alloc] initWithTitle:@"MEDIA Browser…"
-                                                      action:@selector(showMediaCommand:)
-                                               keyEquivalent:@"M"];
-    mediaItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    mediaItem.target = delegate;
-    [fileMenu addItem:mediaItem];
+    NSMenuItem* workspaceItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:workspaceItem];
+    NSMenu* workspaceMenu = [[NSMenu alloc] initWithTitle:@"Workspace"];
+    workspaceItem.submenu = workspaceMenu;
 
-    NSMenuItem* objectItem = [[NSMenuItem alloc] initWithTitle:@"Object Manager…"
-                                                       action:@selector(showObjectManagerCommand:)
-                                                keyEquivalent:@"J"];
-    objectItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    objectItem.target = delegate;
-    [fileMenu addItem:objectItem];
-
-    NSMenuItem* converterItem = [[NSMenuItem alloc] initWithTitle:@"Sample Converter…"
-                                                          action:@selector(showConverterCommand:)
-                                                   keyEquivalent:@"K"];
-    converterItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    converterItem.target = delegate;
-    [fileMenu addItem:converterItem];
+    AddMenuCommand(workspaceMenu, @"Samples / Sample Editor", @selector(showSampleEditorCommand:), @"1", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(workspaceMenu, @"MEDIA / Import", @selector(showMediaCommand:), @"2", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(workspaceMenu, @"Multisample Editor", @selector(showMultisampleEditor:), @"3", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(workspaceMenu, @"SOUND Editor", @selector(showSoundEditor:), @"4", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(workspaceMenu, @"Bank Organizer", @selector(showBankOrganizer:), @"5", NSEventModifierFlagCommand, delegate);
+    [workspaceMenu addItem:[NSMenuItem separatorItem]];
+    AddMenuCommand(workspaceMenu, @"Object Manager", @selector(showObjectManagerCommand:), @"", 0, delegate);
+    AddMenuCommand(workspaceMenu, @"Sample Converter", @selector(showConverterCommand:), @"", 0, delegate);
+    AddMenuCommand(workspaceMenu, @"Guided Workflow", @selector(showWorkflowCommand:), @"0", NSEventModifierFlagCommand, delegate);
 }
 
 } // namespace
