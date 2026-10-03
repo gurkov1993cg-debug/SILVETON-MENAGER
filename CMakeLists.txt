@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(SILVETON_MANAGER VERSION 0.1.0 LANGUAGES C CXX OBJCXX)
+project(SILVETON_MANAGER VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(APPLE)
+    enable_language(OBJCXX)
     set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "SILVETON Manager target architecture" FORCE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum supported macOS version" FORCE)
 endif()
@@ -38,6 +39,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
         -Wpedantic
         -Wshadow
         -Wconversion
+        -Werror
     )
 endif()
 
@@ -82,6 +84,7 @@ if(SILVETON_MANAGER_BUILD_TESTS)
             -Wpedantic
             -Wshadow
             -Wconversion
+            -Werror
         )
     endif()
 
