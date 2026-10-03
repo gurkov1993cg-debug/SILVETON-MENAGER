@@ -2,11 +2,13 @@
 
 #include "silveton/manager/AudioFileLoader.h"
 #include "silveton/manager/KorgImporter.h"
+#include "silveton/manager/SampleEditor.h"
 #include "silveton/manager/SvBankBuilder.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstdint>
-#include <filesystem>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -14,8 +16,20 @@
 namespace {
 using namespace silveton::manager;
 
+std::size_t filenameStart(const std::string& path) noexcept {
+    const std::size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? 0U : slash + 1U;
+}
+
+std::string filenameOnly(const std::string& path) {
+    return path.substr(filenameStart(path));
+}
+
 std::string lowerExtension(const std::string& path) {
-    std::string ext = std::filesystem::path(path).extension().string();
+    const std::size_t start = filenameStart(path);
+    const std::size_t dot = path.find_last_of('.');
+    std::string ext;
+    if (dot != std::string::npos && dot >= start) ext = path.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
@@ -24,6 +38,14 @@ std::string lowerExtension(const std::string& path) {
 
 NSString* nsString(const std::string& value) {
     return [NSString stringWithUTF8String:value.c_str()];
+}
+
+void setError(NSString** error, const std::string& message) {
+    if (error != nullptr) *error = nsString(message);
+}
+
+void clearError(NSString** error) {
+    if (error != nullptr) *error = nil;
 }
 
 void assignAutomaticAddress(SoundDefinition& sound, std::size_t index) {
@@ -97,6 +119,10 @@ std::string joinMessages(const std::vector<std::string>& messages) {
     return stream.str();
 }
 
+bool validSampleIndex(const BankProject& project, NSUInteger index) noexcept {
+    return static_cast<std::size_t>(index) < project.samples.size();
+}
+
 } // namespace
 
 @interface SVManagerDocument : NSObject {
@@ -108,6 +134,22 @@ std::string joinMessages(const std::vector<std::string>& messages) {
 - (NSArray<NSString*>*)displayRows;
 - (NSString*)statusSummary;
 - (void)clearProject;
+
+- (NSUInteger)sampleCount;
+- (NSArray<NSString*>*)sampleDisplayRows;
+- (NSDictionary<NSString*, id>*)sampleStateAtIndex:(NSUInteger)index;
+- (NSArray<NSNumber*>*)waveformAtIndex:(NSUInteger)index pointCount:(NSUInteger)pointCount error:(NSString**)error;
+- (BOOL)trimSampleAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error;
+- (BOOL)setLoopForSampleAtIndex:(NSUInteger)index enabled:(BOOL)enabled startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error;
+- (BOOL)applyLoopCrossfadeForSampleAtIndex:(NSUInteger)index frames:(uint32_t)frames error:(NSString**)error;
+- (BOOL)reverseSampleAtIndex:(NSUInteger)index error:(NSString**)error;
+- (BOOL)applyGainForSampleAtIndex:(NSUInteger)index gainDb:(float)gainDb error:(NSString**)error;
+- (BOOL)normalizeSampleAtIndex:(NSUInteger)index targetPeakDb:(float)targetPeakDb error:(NSString**)error;
+- (BOOL)fadeInSampleAtIndex:(NSUInteger)index frames:(uint64_t)frames error:(NSString**)error;
+- (BOOL)fadeOutSampleAtIndex:(NSUInteger)index frames:(uint64_t)frames error:(NSString**)error;
+- (BOOL)setRootKeyForSampleAtIndex:(NSUInteger)index rootKey:(uint8_t)rootKey error:(NSString**)error;
+- (BOOL)setFineTuneForSampleAtIndex:(NSUInteger)index cents:(float)cents error:(NSString**)error;
+- (uint64_t)nearestZeroCrossingForSampleAtIndex:(NSUInteger)index frame:(uint64_t)frame radius:(uint64_t)radius;
 @end
 
 @implementation SVManagerDocument
@@ -130,7 +172,7 @@ std::string joinMessages(const std::vector<std::string>& messages) {
         if (ext == ".kmp") {
             auto result = KorgImporter::loadKmp(path);
             if (!result.ok()) {
-                messages.push_back(std::filesystem::path(path).filename().string() + ": " + result.error);
+                messages.push_back(filenameOnly(path) + ": " + result.error);
                 continue;
             }
             for (const auto& warning : result.warnings) messages.push_back(warning);
@@ -142,7 +184,7 @@ std::string joinMessages(const std::vector<std::string>& messages) {
         if (ext == ".ksc") {
             auto result = KorgImporter::loadKsc(path);
             if (!result.ok()) {
-                messages.push_back(std::filesystem::path(path).filename().string() + ": " + result.error);
+                messages.push_back(filenameOnly(path) + ": " + result.error);
                 continue;
             }
             for (const auto& warning : result.warnings) messages.push_back(warning);
@@ -154,7 +196,7 @@ std::string joinMessages(const std::vector<std::string>& messages) {
         if (ext == ".ksf") {
             auto result = KorgImporter::loadKsf(path);
             if (!result.ok()) {
-                messages.push_back(std::filesystem::path(path).filename().string() + ": " + result.error);
+                messages.push_back(filenameOnly(path) + ": " + result.error);
                 continue;
             }
             appendSingleSample(_project, std::move(result.sample));
@@ -165,7 +207,7 @@ std::string joinMessages(const std::vector<std::string>& messages) {
         if (ext == ".wav" || ext == ".wave" || ext == ".aif" || ext == ".aiff" || ext == ".aifc") {
             auto result = AudioFileLoader::load(path);
             if (!result.ok()) {
-                messages.push_back(std::filesystem::path(path).filename().string() + ": " + result.error);
+                messages.push_back(filenameOnly(path) + ": " + result.error);
                 continue;
             }
             appendSingleSample(_project, std::move(result.sample));
@@ -173,18 +215,16 @@ std::string joinMessages(const std::vector<std::string>& messages) {
             continue;
         }
 
-        messages.push_back(std::filesystem::path(path).filename().string() + ": unsupported file type");
+        messages.push_back(filenameOnly(path) + ": unsupported file type");
     }
 
     if (importedObjects == 0U) {
         const std::string text = messages.empty() ? std::string("No supported files were selected") : joinMessages(messages);
-        if (error != nullptr) *error = nsString(text);
+        setError(error, text);
         return NO;
     }
 
-    if (error != nullptr) {
-        *error = messages.empty() ? nil : nsString(joinMessages(messages));
-    }
+    if (error != nullptr) *error = messages.empty() ? nil : nsString(joinMessages(messages));
     return YES;
 }
 
@@ -201,7 +241,7 @@ std::string joinMessages(const std::vector<std::string>& messages) {
     SvBuildStats stats{};
     std::string buildError;
     if (!SvBankBuilder::writeAtomic([path fileSystemRepresentation], _project, stats, buildError)) {
-        if (error != nullptr) *error = nsString(buildError);
+        setError(error, buildError);
         return NO;
     }
 
@@ -211,7 +251,7 @@ std::string joinMessages(const std::vector<std::string>& messages) {
         *summary = [NSString stringWithFormat:@"Built %u SOUNDs · %u multisamples · %u samples · %u unique audio payloads · %.1f -> %.1f MiB",
                     stats.soundCount, stats.multisampleCount, stats.sampleCount, stats.uniqueAudioPayloadCount, beforeMiB, afterMiB];
     }
-    if (error != nullptr) *error = nil;
+    clearError(error);
     return YES;
 }
 
@@ -241,6 +281,147 @@ std::string joinMessages(const std::vector<std::string>& messages) {
 - (void)clearProject {
     _project = BankProject{};
     _project.name = "SILVETON BANK";
+}
+
+- (NSUInteger)sampleCount {
+    return static_cast<NSUInteger>(_project.samples.size());
+}
+
+- (NSArray<NSString*>*)sampleDisplayRows {
+    NSMutableArray<NSString*>* rows = [NSMutableArray arrayWithCapacity:_project.samples.size()];
+    for (std::size_t i = 0U; i < _project.samples.size(); ++i) {
+        const auto& sample = _project.samples[i];
+        const double seconds = sample.sampleRate == 0U ? 0.0 : static_cast<double>(sample.totalFrames) / static_cast<double>(sample.sampleRate);
+        NSString* name = nsString(sample.name.empty() ? std::string("Unnamed Sample") : sample.name);
+        [rows addObject:[NSString stringWithFormat:@"%03zu   %@   ·   %u Hz   ·   %u ch   ·   %.3f s",
+                         i + 1U, name, sample.sampleRate, sample.channels, seconds]];
+    }
+    return rows;
+}
+
+- (NSDictionary<NSString*, id>*)sampleStateAtIndex:(NSUInteger)index {
+    if (!validSampleIndex(_project, index)) return nil;
+    const auto& sample = _project.samples[static_cast<std::size_t>(index)];
+    const float peak = SampleEditor::peakLinear(sample);
+    const float peakDb = peak > 0.0F ? static_cast<float>(20.0 * std::log10(static_cast<double>(peak))) : -120.0F;
+    return @{
+        @"name": nsString(sample.name),
+        @"sampleRate": [NSNumber numberWithUnsignedInt:sample.sampleRate],
+        @"channels": [NSNumber numberWithUnsignedInt:sample.channels],
+        @"totalFrames": [NSNumber numberWithUnsignedLongLong:sample.totalFrames],
+        @"rootKey": [NSNumber numberWithUnsignedInt:sample.rootKey],
+        @"fineTuneCents": [NSNumber numberWithFloat:sample.fineTuneCents],
+        @"loopEnabled": [NSNumber numberWithBool:sample.loop.enabled],
+        @"loopStart": [NSNumber numberWithUnsignedLongLong:sample.loop.startFrame],
+        @"loopEnd": [NSNumber numberWithUnsignedLongLong:sample.loop.endFrame],
+        @"crossfadeFrames": [NSNumber numberWithUnsignedInt:sample.loop.crossfadeFrames],
+        @"peakDb": [NSNumber numberWithFloat:peakDb]
+    };
+}
+
+- (NSArray<NSNumber*>*)waveformAtIndex:(NSUInteger)index pointCount:(NSUInteger)pointCount error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) {
+        if (error != nullptr) *error = @"No sample is selected.";
+        return nil;
+    }
+    std::vector<WaveformPoint> points;
+    std::string editError;
+    if (!SampleEditor::buildWaveform(_project.samples[static_cast<std::size_t>(index)], static_cast<std::size_t>(pointCount), points, editError)) {
+        setError(error, editError);
+        return nil;
+    }
+    NSMutableArray<NSNumber*>* flattened = [NSMutableArray arrayWithCapacity:points.size() * 2U];
+    for (const auto& point : points) {
+        [flattened addObject:[NSNumber numberWithFloat:point.minimum]];
+        [flattened addObject:[NSNumber numberWithFloat:point.maximum]];
+    }
+    clearError(error);
+    return flattened;
+}
+
+- (BOOL)trimSampleAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::trim(_project.samples[static_cast<std::size_t>(index)], startFrame, endFrame, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)setLoopForSampleAtIndex:(NSUInteger)index enabled:(BOOL)enabled startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::setLoop(_project.samples[static_cast<std::size_t>(index)], enabled == YES, startFrame, endFrame, 0U, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)applyLoopCrossfadeForSampleAtIndex:(NSUInteger)index frames:(uint32_t)frames error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::applyLoopCrossfade(_project.samples[static_cast<std::size_t>(index)], frames, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)reverseSampleAtIndex:(NSUInteger)index error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::reverse(_project.samples[static_cast<std::size_t>(index)], editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)applyGainForSampleAtIndex:(NSUInteger)index gainDb:(float)gainDb error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::applyGainDb(_project.samples[static_cast<std::size_t>(index)], gainDb, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)normalizeSampleAtIndex:(NSUInteger)index targetPeakDb:(float)targetPeakDb error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::normalize(_project.samples[static_cast<std::size_t>(index)], targetPeakDb, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)fadeInSampleAtIndex:(NSUInteger)index frames:(uint64_t)frames error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::fadeIn(_project.samples[static_cast<std::size_t>(index)], frames, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)fadeOutSampleAtIndex:(NSUInteger)index frames:(uint64_t)frames error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::fadeOut(_project.samples[static_cast<std::size_t>(index)], frames, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)setRootKeyForSampleAtIndex:(NSUInteger)index rootKey:(uint8_t)rootKey error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::setRootKey(_project.samples[static_cast<std::size_t>(index)], rootKey, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)setFineTuneForSampleAtIndex:(NSUInteger)index cents:(float)cents error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    std::string editError;
+    if (!SampleEditor::setFineTuneCents(_project.samples[static_cast<std::size_t>(index)], cents, editError)) { setError(error, editError); return NO; }
+    clearError(error);
+    return YES;
+}
+
+- (uint64_t)nearestZeroCrossingForSampleAtIndex:(NSUInteger)index frame:(uint64_t)frame radius:(uint64_t)radius {
+    if (!validSampleIndex(_project, index)) return frame;
+    return SampleEditor::nearestZeroCrossing(_project.samples[static_cast<std::size_t>(index)], frame, radius);
 }
 
 @end
