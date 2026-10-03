@@ -28,6 +28,10 @@ public:
                         std::uint32_t crossfadeFrames,
                         std::string& error);
 
+    static bool applyLoopCrossfade(ImportedSample& sample,
+                                   std::uint32_t crossfadeFrames,
+                                   std::string& error);
+
     static bool reverse(ImportedSample& sample, std::string& error);
 
     static bool applyGainDb(ImportedSample& sample,
