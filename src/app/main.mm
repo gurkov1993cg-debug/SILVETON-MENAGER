@@ -30,25 +30,28 @@ NSMenuItem* AddMenuCommand(NSMenu* menu,
     return item;
 }
 
+NSMenu* AddTopLevelMenu(NSMenu* mainMenu, NSString* title) {
+    NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:item];
+    NSMenu* menu = [[NSMenu alloc] initWithTitle:title ?: @""];
+    item.submenu = menu;
+    return menu;
+}
+
 void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     NSMenu* mainMenu = [[NSMenu alloc] initWithTitle:@""];
     app.mainMenu = mainMenu;
 
-    NSMenuItem* applicationItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
-    [mainMenu addItem:applicationItem];
-    NSMenu* applicationMenu = [[NSMenu alloc] initWithTitle:@"SILVETON Manager"];
-    applicationItem.submenu = applicationMenu;
-    NSMenuItem* quitItem = [[NSMenuItem alloc] initWithTitle:@"Quit SILVETON Manager"
-                                                     action:@selector(terminate:)
-                                              keyEquivalent:@"q"];
-    quitItem.target = app;
-    [applicationMenu addItem:quitItem];
+    NSMenu* applicationMenu = AddTopLevelMenu(mainMenu, @"SILVETON Manager");
+    AddMenuCommand(applicationMenu, @"About SILVETON Manager", @selector(orderFrontStandardAboutPanel:), @"", 0, app);
+    [applicationMenu addItem:[NSMenuItem separatorItem]];
+    AddMenuCommand(applicationMenu, @"Hide SILVETON Manager", @selector(hide:), @"h", NSEventModifierFlagCommand, app);
+    AddMenuCommand(applicationMenu, @"Hide Others", @selector(hideOtherApplications:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagOption, app);
+    AddMenuCommand(applicationMenu, @"Show All", @selector(unhideAllApplications:), @"", 0, app);
+    [applicationMenu addItem:[NSMenuItem separatorItem]];
+    AddMenuCommand(applicationMenu, @"Quit SILVETON Manager", @selector(terminate:), @"q", NSEventModifierFlagCommand, app);
 
-    NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
-    [mainMenu addItem:fileItem];
-    NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
-    fileItem.submenu = fileMenu;
-
+    NSMenu* fileMenu = AddTopLevelMenu(mainMenu, @"File");
     AddMenuCommand(fileMenu, @"New SILVETON Bank", @selector(newBankCommand:), @"n", NSEventModifierFlagCommand, delegate);
     AddMenuCommand(fileMenu, @"Open SILVETON Bank…", @selector(openBankCommand:), @"o", NSEventModifierFlagCommand, delegate);
     [fileMenu addItem:[NSMenuItem separatorItem]];
@@ -56,23 +59,38 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     AddMenuCommand(fileMenu, @"Save Bank As…", @selector(saveBankAsCommand:), @"S", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
     [fileMenu addItem:[NSMenuItem separatorItem]];
     AddMenuCommand(fileMenu, @"MEDIA Browser…", @selector(showMediaCommand:), @"M", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
-    AddMenuCommand(fileMenu, @"Object Manager…", @selector(showObjectManagerCommand:), @"J", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
-    AddMenuCommand(fileMenu, @"Sample Converter…", @selector(showConverterCommand:), @"K", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
 
-    NSMenuItem* workspaceItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
-    [mainMenu addItem:workspaceItem];
-    NSMenu* workspaceMenu = [[NSMenu alloc] initWithTitle:@"Workspace"];
-    workspaceItem.submenu = workspaceMenu;
+    NSMenu* editMenu = AddTopLevelMenu(mainMenu, @"Edit");
+    AddMenuCommand(editMenu, @"Undo", @selector(undo:), @"z", NSEventModifierFlagCommand, nil);
+    AddMenuCommand(editMenu, @"Redo", @selector(redo:), @"Z", NSEventModifierFlagCommand | NSEventModifierFlagShift, nil);
+    [editMenu addItem:[NSMenuItem separatorItem]];
+    AddMenuCommand(editMenu, @"Cut", @selector(cut:), @"x", NSEventModifierFlagCommand, nil);
+    AddMenuCommand(editMenu, @"Copy", @selector(copy:), @"c", NSEventModifierFlagCommand, nil);
+    AddMenuCommand(editMenu, @"Paste", @selector(paste:), @"v", NSEventModifierFlagCommand, nil);
+    AddMenuCommand(editMenu, @"Select All", @selector(selectAll:), @"a", NSEventModifierFlagCommand, nil);
 
+    NSMenu* workspaceMenu = AddTopLevelMenu(mainMenu, @"Workspace");
     AddMenuCommand(workspaceMenu, @"Samples / Sample Editor", @selector(showSampleEditorCommand:), @"1", NSEventModifierFlagCommand, delegate);
     AddMenuCommand(workspaceMenu, @"MEDIA / Import", @selector(showMediaCommand:), @"2", NSEventModifierFlagCommand, delegate);
     AddMenuCommand(workspaceMenu, @"Multisample Editor", @selector(showMultisampleEditor:), @"3", NSEventModifierFlagCommand, delegate);
     AddMenuCommand(workspaceMenu, @"SOUND Editor", @selector(showSoundEditor:), @"4", NSEventModifierFlagCommand, delegate);
     AddMenuCommand(workspaceMenu, @"Bank Organizer", @selector(showBankOrganizer:), @"5", NSEventModifierFlagCommand, delegate);
     [workspaceMenu addItem:[NSMenuItem separatorItem]];
-    AddMenuCommand(workspaceMenu, @"Object Manager", @selector(showObjectManagerCommand:), @"", 0, delegate);
-    AddMenuCommand(workspaceMenu, @"Sample Converter", @selector(showConverterCommand:), @"", 0, delegate);
     AddMenuCommand(workspaceMenu, @"Guided Workflow", @selector(showWorkflowCommand:), @"0", NSEventModifierFlagCommand, delegate);
+
+    NSMenu* toolsMenu = AddTopLevelMenu(mainMenu, @"Tools");
+    AddMenuCommand(toolsMenu, @"Object Manager…", @selector(showObjectManagerCommand:), @"J", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
+    AddMenuCommand(toolsMenu, @"Sample Converter…", @selector(showConverterCommand:), @"K", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
+
+    NSMenu* windowMenu = AddTopLevelMenu(mainMenu, @"Window");
+    AddMenuCommand(windowMenu, @"Minimize", @selector(performMiniaturize:), @"m", NSEventModifierFlagCommand, nil);
+    AddMenuCommand(windowMenu, @"Zoom", @selector(performZoom:), @"", 0, nil);
+    [windowMenu addItem:[NSMenuItem separatorItem]];
+    AddMenuCommand(windowMenu, @"Bring All to Front", @selector(arrangeInFront:), @"", 0, app);
+    app.windowsMenu = windowMenu;
+
+    NSMenu* helpMenu = AddTopLevelMenu(mainMenu, @"Help");
+    app.helpMenu = helpMenu;
 }
 
 } // namespace
