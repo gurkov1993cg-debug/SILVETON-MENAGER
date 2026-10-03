@@ -21,7 +21,7 @@ SOUND editing is intentionally not duplicated in Manager. SOUND editing stays in
 Tablet runtime must only open the prepared bank/index and stream audio; it must not rebuild KMP/KSC structures on startup.
 
 ## Implemented files
-- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors. `src/core/SampleEditor.cpp` is now part of the real core target.
+- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors. `src/core/SampleEditor.cpp` is part of the real core target.
 - `include/silveton/manager/ManagerTypes.h`: canonical Manager sample/multisample/SOUND model and preserved raw Korg metadata.
 - `include/silveton/manager/KorgImporter.h`, `src/core/KorgImporter.cpp`: KSF/KMP/KSC import, exact zones/dependencies, canonical PCM16LE. Path handling no longer depends on `std::filesystem`; it uses macOS-10.13-compatible string/POSIX path operations while preserving direct and nested KSF resolution and stable source identities.
 - `include/silveton/manager/SampleEditor.h`, `src/core/SampleEditor.cpp`: real offline sample-edit core for PCM16LE/PCM24LE/Float32LE project copies. Implements destructive trim, validated loop metadata/crossfade bounds, explicit user-triggered destructive loop-crossfade baking, frame-correct reverse with loop remap, gain, peak normalize, fade in/out, root key, fine tune, peak readback, nearest zero crossing and waveform min/max envelope generation. Source files on disk are not modified by these operations.
@@ -29,12 +29,12 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `include/silveton/manager/SvBankFormat.h`, `src/core/SvBankFormat.cpp`: `.sv` v1 explicit little-endian fixed records + SHA-256.
 - `include/silveton/manager/SvBankBuilder.h`, `src/core/SvBankBuilder.cpp`: reference validation, string/audio dedup, 4096-byte audio alignment, integrity and atomic writing without `std::filesystem`.
 - `include/silveton/manager/SvBankReader.h`, `src/core/SvBankReader.cpp`: bounds/integrity/reference validation and complete project reconstruction.
-- `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata. Path identity, extension and stem handling now use macOS-10.13-compatible string/POSIX operations instead of `std::filesystem`.
+- `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata. Path identity, extension and stem handling use macOS-10.13-compatible string/POSIX operations instead of `std::filesystem`.
 - `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SampleEditor PCM mutation/no-auto-apply behavior, SHA-256, `.sv` round-trip/dedup/corruption/atomic write. Sample-editor coverage checks setLoop metadata without PCM mutation, explicit real loop-crossfade PCM mutation, fade in/out, trim, reverse, gain, normalize, root key, fine tune, zero crossing and waveform generation.
 
 ### Native AppKit application
-- `src/app/ManagerDocument.mm`: real imports, real status/list/clear, real atomic `.sv` build, and now the real bridge for selected-sample editing. It exposes actual sample rows/state/waveform plus explicit user-triggered Trim, Set Loop, Apply Loop Crossfade, Reverse, Gain, Normalize, Fade In, Fade Out, Root Key, Fine Tune and Zero Crossing calls directly to `SampleEditor`. Import and Build never call these edit functions automatically. Its old `std::filesystem` path usage was also removed so it stays compatible with macOS 10.13.
-- `src/app/MainWindowController.mm`: real Import/Clear/Build controls and real project table/status/path; sample-editor controls are the next GUI wiring step. No fake controls/meters.
+- `src/app/ManagerDocument.mm`: real imports, real status/list/clear, real atomic `.sv` build, and real selected-sample edit bridge. It exposes actual sample rows/state/waveform plus explicit user-triggered Trim, Set Loop, Apply Loop Crossfade, Reverse, Gain, Normalize, Fade In, Fade Out, Root Key, Fine Tune and Zero Crossing calls directly to `SampleEditor`. Import and Build never call these edit functions automatically. Old `std::filesystem` path usage was removed for macOS 10.13 compatibility.
+- `src/app/MainWindowController.mm`: real sample-editor GUI is now wired. It shows the actual sample list, actual waveform min/max data, actual loop markers and numeric controls for Trim, Loop, Loop Crossfade, Fade In/Out, Gain, Normalize, Reverse, Root Key, Fine Tune and explicit Zero-Crossing Snap helpers. Every edit requires a user button press; no selection/import/build action applies DSP edits automatically.
 - `src/app/AppDelegate.mm`: owns/shows the Manager window and application lifecycle.
 - `src/app/main.mm`: native NSApplication entry/event loop.
 
@@ -85,10 +85,11 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - Real user-applied loop-crossfade implementation commit `eafe4a8776603103883e31a7f8fdfa482c91340f` is present but not yet claimed verified until regression tests run.
 - `SampleEditor.cpp` was added to the core build target in commit `2819851c494639ad3429e1761ec566caeb4b4a0e`; this integration is not claimed verified until the strict Intel build/tests complete.
 - Sample-editor regression coverage commit `099babef24741c2b34971eaaa698e4640a4745c5` is present and explicitly checks that editing is user-triggered and PCM changes are real; not yet claimed PASS until the Intel run completes.
-- `ManagerDocument.mm` sample-edit bridge commit `9c1be226146a8ac2125e822f728e93cf74c4d549` is present; GUI wiring and Intel app compile are still required before claiming end-to-end editor operation.
+- `ManagerDocument.mm` sample-edit bridge commit `9c1be226146a8ac2125e822f728e93cf74c4d549` is present.
+- `MainWindowController.mm` real waveform/editor GUI wiring commit `5eecd85c88899a6c4463098369d315c5040fdc4a` is present; Intel app compile/test is still required before claiming end-to-end success.
 - No app-build success is claimed until a subsequent Intel run reaches compile/link/test/sign/package checks.
 
 ## Next
-1. Complete native waveform/sample-editor GUI wiring with explicit Apply actions only.
-2. Run the strict Intel/macOS 10.13 build and fix only real compiler/test failures.
+1. Run the strict Intel/macOS 10.13 build and fix only real compiler/test failures.
+2. After a green build, preserve the first proven sample-editor Manager baseline.
 3. Add multisample keyboard/velocity-zone editor.
