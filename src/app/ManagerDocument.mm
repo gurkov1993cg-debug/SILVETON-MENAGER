@@ -105,7 +105,7 @@ void appendSingleSample(BankProject& project, ImportedSample sample) {
     zone.rootKey = root;
     ms.zones.push_back(zone);
 
-    const std::uint32_t multisampleIndex = static_cast<std::uint32_t>(project.multisamples.size());
+    const std::uint32_t multisampleIndex = static_cast<std::uint32_t>(_project.multisamples.size());
     project.multisamples.push_back(std::move(ms));
     appendSoundForMultisample(project, multisampleIndex, name);
 }
@@ -529,9 +529,10 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
         current = [sampleIndexes indexGreaterThanIndex:current];
     }
 
-    std::sort(indexes.begin(), indexes.end(), [this](std::size_t a, std::size_t b) {
-        const auto rootA = _project.samples[a].rootKey;
-        const auto rootB = _project.samples[b].rootKey;
+    auto* project = &_project;
+    std::sort(indexes.begin(), indexes.end(), [project](std::size_t a, std::size_t b) {
+        const auto rootA = project->samples[a].rootKey;
+        const auto rootB = project->samples[b].rootKey;
         return rootA == rootB ? a < b : rootA < rootB;
     });
 
