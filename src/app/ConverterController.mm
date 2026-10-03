@@ -32,6 +32,7 @@
 
 @interface SVAppDelegate (ConverterCommands)
 - (void)showConverterCommand:(id)sender;
+- (void)refreshConverterIfOpen;
 @end
 
 namespace {
@@ -212,7 +213,7 @@ NSUInteger channelsForPopup(NSPopUpButton* popup) {
 
 - (void)refreshFromDocument {
     _document = ConverterDocument(_delegate);
-    const NSIndexSet* previous = _table.selectedRowIndexes;
+    NSIndexSet* previous = [_table.selectedRowIndexes copy];
     _rows = [_document sampleDisplayRows] ?: @[];
     [_table reloadData];
     if (previous.count > 0U) {
@@ -329,6 +330,11 @@ NSUInteger channelsForPopup(NSPopUpButton* popup) {
     [controller refreshFromDocument];
     [controller showWindow:nil];
     [controller.window makeKeyAndOrderFront:nil];
+}
+
+- (void)refreshConverterIfOpen {
+    SVConverterWindowController* controller = objc_getAssociatedObject(self, kSVConverterControllerKey);
+    [controller refreshFromDocument];
 }
 
 @end
