@@ -55,6 +55,7 @@ if(APPLE)
         src/app/SampleAuditionPlayer.mm
         src/app/MultisampleEditorController.mm
         src/app/BankOrganizerController.mm
+        src/app/SoundEditorController.mm
         src/app/ManagerDocument.mm
     )
 
