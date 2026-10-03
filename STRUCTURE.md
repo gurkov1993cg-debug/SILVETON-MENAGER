@@ -21,7 +21,7 @@ SOUND editing is intentionally not duplicated in Manager. SOUND editing stays in
 Tablet runtime must only open the prepared bank/index and stream audio; it must not rebuild KMP/KSC structures on startup.
 
 ## Implemented files
-- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors.
+- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors. `src/core/SampleEditor.cpp` is now part of the real core target.
 - `include/silveton/manager/ManagerTypes.h`: canonical Manager sample/multisample/SOUND model and preserved raw Korg metadata.
 - `include/silveton/manager/KorgImporter.h`, `src/core/KorgImporter.cpp`: KSF/KMP/KSC import, exact zones/dependencies, canonical PCM16LE. Path handling no longer depends on `std::filesystem`; it uses macOS-10.13-compatible string/POSIX path operations while preserving direct and nested KSF resolution and stable source identities.
 - `include/silveton/manager/SampleEditor.h`, `src/core/SampleEditor.cpp`: real offline sample-edit core for PCM16LE/PCM24LE/Float32LE project copies. Implements destructive trim, validated loop metadata/crossfade bounds, explicit user-triggered destructive loop-crossfade baking, frame-correct reverse with loop remap, gain, peak normalize, fade in/out, root key, fine tune, peak readback, nearest zero crossing and waveform min/max envelope generation. Source files on disk are not modified by these operations.
@@ -81,12 +81,13 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - `tests/ManagerCoreTests.cpp` commit `73ff5b5999240b724483556ae185adb397284f45` removes only that test-side incompatibility: string/POSIX temp path creation, file names and cleanup replace `std::filesystem`; the actual regression assertions and Manager behavior are preserved.
 - Intel run `37109218356` / run 49: configuration PASS and `ManagerCoreTests.cpp` progressed past the prior failure. The next real compile failure is `src/core/AudioFileLoader.cpp`, where source identity, extension and stem helpers still used `std::filesystem` unavailable at macOS 10.13.
 - `src/core/AudioFileLoader.cpp` commit `52947cf4a95ab9784a9f643cb6bea12234173c84` removes only that path-library incompatibility. WAV/AIFF parsing, root/loop metadata, PCM conversion and public API remain unchanged.
-- Sample-editor implementation commit `f79a7e33bf1112585cd91a479b975050eda05801` is present but not yet claimed verified until CMake integration and regression tests run.
-- Real user-applied loop-crossfade implementation commit `eafe4a8776603103883e31a7f8fdfa482c91340f` is present but not yet claimed verified until CMake integration and regression tests run.
+- Sample-editor implementation commit `f79a7e33bf1112585cd91a479b975050eda05801` is present but not yet claimed verified until regression tests run.
+- Real user-applied loop-crossfade implementation commit `eafe4a8776603103883e31a7f8fdfa482c91340f` is present but not yet claimed verified until regression tests run.
+- `SampleEditor.cpp` was added to the core build target in commit `2819851c494639ad3429e1761ec566caeb4b4a0e`; this integration is not claimed verified until the strict Intel build/tests complete.
 - No app-build success is claimed until a subsequent Intel run reaches compile/link/test/sign/package checks.
 
 ## Next
-1. Add `SampleEditor.cpp` to the existing core target and add regression coverage for every editor operation including real loop-crossfade audio mutation.
+1. Add regression coverage for every editor operation including real loop-crossfade audio mutation.
 2. Run the strict Intel/macOS 10.13 build and fix only real compiler/test failures.
 3. Wire verified sample editor core to the native waveform GUI with explicit Apply actions only.
 4. Add multisample keyboard/velocity-zone editor.
