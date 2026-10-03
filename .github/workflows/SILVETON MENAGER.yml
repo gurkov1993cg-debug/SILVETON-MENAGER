@@ -34,23 +34,11 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
             -DSILVETON_MANAGER_BUILD_TESTS=ON
 
-      - name: Build core regression tests
+      - name: Build and run all regression tests
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build build --config Release --target \
-            silveton_manager_tests \
-            silveton_sample_editor_region_tests \
-            silveton_sound_editor_tests \
-            silveton_media_path_tests \
-            silveton_object_manager_tests \
-            silveton_manager_bank_io_tests
-
-      - name: Run core regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          ctest --test-dir build -C Release --output-on-failure
+          cmake --build build --config Release --target silveton_manager_check
 
       - name: Build SILVETON Manager app
         shell: bash
