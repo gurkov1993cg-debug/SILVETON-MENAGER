@@ -1,0 +1,19 @@
+name: SILVETON Actions Probe
+
+on:
+  push:
+    branches:
+      - silveton-manager-development
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Runner probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=${RUNNER_OS} arch=$(uname -m)"
+          echo "GitHub Actions runner provisioning is working."
