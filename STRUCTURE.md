@@ -40,14 +40,14 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 
 ### `include/silveton/manager/SvBankBuilder.h`
 ### `src/core/SvBankBuilder.cpp`
-- Validates references, deduplicates strings/audio, aligns audio to 4096 bytes, computes payload SHA-256 and writes atomically.
+- Validates references, deduplicates strings/audio, aligns audio to 4096 bytes, computes SHA-256 and writes atomically.
 
 ### `include/silveton/manager/SvBankReader.h`
 ### `src/core/SvBankReader.cpp`
-- Validates magic/version/file size, every section boundary and fixed record-section size.
-- Optionally verifies SHA-256 before trusting payload data.
-- Rejects invalid sample audio ranges, invalid string offsets, invalid zone/sample references and invalid SOUND/multisample ranges.
-- Reconstructs Manager sample, multisample and SOUND data with exact audio bytes.
+- Bounds/integrity/reference validation and full project reconstruction from `.sv`.
+
+### `include/silveton/manager/AudioFileLoader.h`
+- Declares offline WAV/AIFF/AIFC import to the same canonical sample representation used by KSF and `.sv`.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -67,14 +67,12 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Development branch exists; `main` untouched.
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
-- Local full `.sv` build -> read round-trip PASS using SALEAS data.
-- Exact audio recovery PASS.
-- Dedup PASS: 14 sample records -> 13 physical audio payloads when one sample is duplicated.
-- Corrupted payload rejection PASS via SHA-256.
-- Repository-wide build is not yet claimed until WAV/AIFF loader, tests and AppKit sources are committed and CI runs.
+- Local full `.sv` build/read round-trip, exact audio recovery, dedup and corrupt-bank rejection PASS.
+- Audio loader implementation compiles locally with strict `-Werror`; implementation commit is next.
+- Repository-wide build is not yet claimed until the remaining files/tests/AppKit sources are committed and CI runs.
 
 ## Next
-1. WAV/AIFF importer.
+1. Commit WAV/AIFF implementation.
 2. Regression tests + clean core build.
 3. Native AppKit GUI.
 4. Batch import, one-click bank build, tablet transfer.
