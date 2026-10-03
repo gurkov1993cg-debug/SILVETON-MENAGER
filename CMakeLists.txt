@@ -127,4 +127,18 @@ if(SILVETON_MANAGER_BUILD_TESTS)
     add_test(NAME silveton_manager_core COMMAND silveton_manager_tests)
     add_test(NAME silveton_sample_editor_regions COMMAND silveton_sample_editor_region_tests)
     add_test(NAME silveton_sound_editor COMMAND silveton_sound_editor_tests)
+
+    if(APPLE)
+        add_executable(silveton_manager_bank_io_tests
+            tests/ManagerDocumentBankIOTests.mm
+            src/app/ManagerDocument.mm
+            src/app/ManagerDocumentBankIO.mm
+        )
+        target_link_libraries(silveton_manager_bank_io_tests PRIVATE
+            silveton_manager_core
+            "-framework Foundation"
+        )
+        target_compile_options(silveton_manager_bank_io_tests PRIVATE -fobjc-arc)
+        add_test(NAME silveton_manager_bank_io COMMAND silveton_manager_bank_io_tests)
+    endif()
 endif()
