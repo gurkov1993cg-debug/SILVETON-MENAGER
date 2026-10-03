@@ -4,9 +4,11 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
-#include <filesystem>
 #include <fstream>
+#include <limits.h>
+#include <stdlib.h>
 #include <string>
+#include <sys/stat.h>
 #include <unordered_set>
 #include <vector>
 
@@ -96,22 +98,74 @@ const Chunk* findChunk(const std::vector<Chunk>& chunks, const char* id) noexcep
     return nullptr;
 }
 
-std::string sourceIdentityFor(const std::filesystem::path& path) {
-    std::error_code ec;
-    const auto canonical = std::filesystem::weakly_canonical(path, ec);
-    return (ec ? path.lexically_normal() : canonical).generic_string();
+std::string normalizeSeparators(std::string path) {
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
 }
 
-std::string ksfPathFor(const std::filesystem::path& kmpPath, const std::string& filename) {
-    const auto direct = kmpPath.parent_path() / filename;
-    if (std::filesystem::exists(direct)) return direct.string();
-    const auto nested = kmpPath.parent_path() / kmpPath.stem() / filename;
-    if (std::filesystem::exists(nested)) return nested.string();
-    return direct.string();
+bool isAbsolutePath(const std::string& path) noexcept {
+    if (path.empty()) return false;
+    if (path[0] == '/') return true;
+    return path.size() >= 3U && std::isalpha(static_cast<unsigned char>(path[0])) != 0 && path[1] == ':' &&
+           (path[2] == '/' || path[2] == '\\');
 }
 
-std::string lowerExtension(std::filesystem::path p) {
-    std::string ext = p.extension().string();
+std::string parentPath(const std::string& input) {
+    const std::string path = normalizeSeparators(input);
+    const auto pos = path.find_last_of('/');
+    if (pos == std::string::npos) return ".";
+    if (pos == 0U) return "/";
+    return path.substr(0U, pos);
+}
+
+std::string fileName(const std::string& input) {
+    const std::string path = normalizeSeparators(input);
+    const auto pos = path.find_last_of('/');
+    return pos == std::string::npos ? path : path.substr(pos + 1U);
+}
+
+std::string stemName(const std::string& input) {
+    const std::string name = fileName(input);
+    const auto dot = name.find_last_of('.');
+    if (dot == std::string::npos || dot == 0U) return name;
+    return name.substr(0U, dot);
+}
+
+std::string joinPath(const std::string& baseInput, const std::string& childInput) {
+    const std::string child = normalizeSeparators(childInput);
+    if (isAbsolutePath(child)) return child;
+    std::string base = normalizeSeparators(baseInput);
+    if (base.empty() || base == ".") return child;
+    while (base.size() > 1U && base.back() == '/') base.pop_back();
+    return base + "/" + child;
+}
+
+bool fileExists(const std::string& path) noexcept {
+    struct stat info {};
+    return ::stat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode);
+}
+
+std::string sourceIdentityFor(const std::string& path) {
+#if defined(__APPLE__) || defined(__unix__)
+    char resolved[PATH_MAX];
+    if (::realpath(path.c_str(), resolved) != nullptr) return std::string(resolved);
+#endif
+    return normalizeSeparators(path);
+}
+
+std::string ksfPathFor(const std::string& kmpPath, const std::string& filename) {
+    const std::string parent = parentPath(kmpPath);
+    const std::string direct = joinPath(parent, filename);
+    if (fileExists(direct)) return direct;
+    const std::string nested = joinPath(joinPath(parent, stemName(kmpPath)), filename);
+    if (fileExists(nested)) return nested;
+    return direct;
+}
+
+std::string lowerExtension(const std::string& path) {
+    const std::string name = fileName(path);
+    const auto dot = name.find_last_of('.');
+    std::string ext = dot == std::string::npos ? std::string{} : name.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
@@ -221,7 +275,7 @@ KorgImportResult KorgImporter::loadKmp(const std::string& path) {
     KorgImportResult out{};
     out.multisample.name = fixedString(msp->data, 16U);
     out.multisample.sourceIdentity = sourceIdentityFor(path);
-    const std::filesystem::path kmpPath(path);
+    const std::string kmpPath = path;
     std::uint8_t lowKey = 0U;
 
     for (std::uint8_t i = 0U; i < regionCount; ++i) {
@@ -302,16 +356,15 @@ KorgCollectionResult KorgImporter::loadKsc(const std::string& path) {
     const auto entries = parseKsc(path, error);
     if (!error.empty()) { out.error = error; return out; }
 
-    const std::filesystem::path base = std::filesystem::path(path).parent_path();
+    const std::string base = parentPath(path);
     std::unordered_set<std::string> sampleIdentities;
     for (const auto& entry : entries) {
-        std::filesystem::path p = entry;
-        if (p.is_relative()) p = base / p;
+        const std::string p = isAbsolutePath(entry) ? normalizeSeparators(entry) : joinPath(base, entry);
         const auto ext = lowerExtension(p);
         if (ext == ".kmp") {
-            auto imported = loadKmp(p.string());
+            auto imported = loadKmp(p);
             if (!imported.ok()) {
-                out.warnings.push_back(p.filename().string() + ": " + imported.error);
+                out.warnings.push_back(fileName(p) + ": " + imported.error);
                 continue;
             }
             const std::uint32_t sampleBase = static_cast<std::uint32_t>(out.samples.size());
@@ -323,15 +376,15 @@ KorgCollectionResult KorgImporter::loadKsc(const std::string& path) {
             out.multisamples.push_back(std::move(imported.multisample));
             out.warnings.insert(out.warnings.end(), imported.warnings.begin(), imported.warnings.end());
         } else if (ext == ".ksf") {
-            auto sample = loadKsf(p.string());
+            auto sample = loadKsf(p);
             if (!sample.ok()) {
-                out.warnings.push_back(p.filename().string() + ": " + sample.error);
+                out.warnings.push_back(fileName(p) + ": " + sample.error);
                 continue;
             }
             if (sampleIdentities.find(sample.sample.sourceIdentity) != sampleIdentities.end()) continue;
             const std::uint32_t sampleIndex = static_cast<std::uint32_t>(out.samples.size());
             ImportedMultisample ms{};
-            ms.name = sample.sample.name.empty() ? p.stem().string() : sample.sample.name;
+            ms.name = sample.sample.name.empty() ? stemName(p) : sample.sample.name;
             ms.sourceIdentity = std::string("KSF:") + sample.sample.sourceIdentity;
             ImportedZone zone{};
             zone.sampleIndex = sampleIndex;
