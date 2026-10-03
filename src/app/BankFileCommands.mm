@@ -4,6 +4,9 @@
 @interface SVManagerDocument : NSObject
 - (BOOL)loadBankAtPath:(NSString*)path error:(NSString**)error summary:(NSString**)summary;
 - (BOOL)buildBankAtPath:(NSString*)path error:(NSString**)error summary:(NSString**)summary;
+- (void)clearProject;
+- (BOOL)hasUnsavedChanges;
+- (void)markCurrentStateSaved;
 @end
 
 @interface SVMainWindowController : NSWindowController
@@ -15,9 +18,11 @@
 @end
 
 @interface SVAppDelegate (BankFileCommands)
+- (void)newBankCommand:(id)sender;
 - (void)openBankCommand:(id)sender;
 - (void)saveBankCommand:(id)sender;
 - (void)saveBankAsCommand:(id)sender;
+- (BOOL)confirmSaveBeforeAction:(NSString*)action;
 @end
 
 namespace {
@@ -51,7 +56,9 @@ void SVSetPathLabel(SVAppDelegate* delegate, NSString* prefix, NSString* path) {
     if (controller == nil) return;
     id label = [controller valueForKey:@"pathLabel"];
     if ([label isKindOfClass:[NSTextField class]]) {
-        ((NSTextField*)label).stringValue = [NSString stringWithFormat:@"%@: %@", prefix ?: @"Bank", path ?: @""];
+        ((NSTextField*)label).stringValue = path.length == 0U
+            ? (prefix ?: @"Bank")
+            : [NSString stringWithFormat:@"%@: %@", prefix ?: @"Bank", path];
     }
 }
 
@@ -85,15 +92,65 @@ BOOL SVWriteBank(SVAppDelegate* delegate, NSString* path) {
         SVShowBankMessage(delegate, @"Bank save failed", error ?: @"Unknown bank save error.", NSAlertStyleCritical);
         return NO;
     }
+    [document markCurrentStateSaved];
     SVSetCurrentBankPath(delegate, path);
     SVSetPathLabel(delegate, @"Saved", path);
     SVShowBankMessage(delegate, @"SILVETON bank saved", summary ?: @"Bank save completed.", NSAlertStyleInformational);
     return YES;
 }
 
+BOOL SVSaveBankAs(SVAppDelegate* delegate) {
+    NSSavePanel* panel = [NSSavePanel savePanel];
+    panel.title = @"Save SILVETON bank";
+    panel.prompt = @"Save";
+    NSString* currentPath = SVCurrentBankPath(delegate);
+    panel.nameFieldStringValue = currentPath.length == 0U ? @"SILVETON_BANK.sv" : currentPath.lastPathComponent;
+    panel.allowedFileTypes = @[@"sv"];
+    panel.allowsOtherFileTypes = NO;
+    panel.canCreateDirectories = YES;
+    if ([panel runModal] != NSModalResponseOK || panel.URL.path.length == 0U) return NO;
+    return SVWriteBank(delegate, panel.URL.path);
+}
+
 } // namespace
 
 @implementation SVAppDelegate (BankFileCommands)
+
+- (BOOL)confirmSaveBeforeAction:(NSString*)action {
+    SVManagerDocument* document = SVDocument(self);
+    if (document == nil || ![document hasUnsavedChanges]) return YES;
+
+    NSAlert* alert = [[NSAlert alloc] init];
+    alert.messageText = @"Save changes to the current SILVETON bank?";
+    alert.informativeText = [NSString stringWithFormat:@"The current bank has unsaved changes. Save before %@?", action.length == 0U ? @"continuing" : action];
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Save"];
+    [alert addButtonWithTitle:@"Don't Save"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    const NSModalResponse response = [alert runModal];
+    if (response == NSAlertSecondButtonReturn) return YES;
+    if (response != NSAlertFirstButtonReturn) return NO;
+
+    NSString* path = SVCurrentBankPath(self);
+    return path.length == 0U ? SVSaveBankAs(self) : SVWriteBank(self, path);
+}
+
+- (void)newBankCommand:(id)sender {
+    (void)sender;
+    if (![self confirmSaveBeforeAction:@"creating a new bank"]) return;
+    SVManagerDocument* document = SVDocument(self);
+    if (document == nil) {
+        SVShowBankMessage(self, @"New Bank unavailable", @"The Manager document is unavailable.", NSAlertStyleCritical);
+        return;
+    }
+    SVStopAudition(self);
+    [document clearProject];
+    [document markCurrentStateSaved];
+    SVSetCurrentBankPath(self, nil);
+    SVSetPathLabel(self, @"New SILVETON bank", nil);
+    [self refreshAllEditors];
+}
 
 - (void)openBankCommand:(id)sender {
     (void)sender;
@@ -106,7 +163,8 @@ BOOL SVWriteBank(SVAppDelegate* delegate, NSString* path) {
     panel.resolvesAliases = YES;
     panel.allowedFileTypes = @[@"sv"];
 
-    if ([panel runModal] != NSModalResponseOK || panel.URL.path == nil) return;
+    if ([panel runModal] != NSModalResponseOK || panel.URL.path.length == 0U) return;
+    if (![self confirmSaveBeforeAction:@"opening another bank"]) return;
 
     SVManagerDocument* document = SVDocument(self);
     if (document == nil) {
@@ -121,6 +179,7 @@ BOOL SVWriteBank(SVAppDelegate* delegate, NSString* path) {
         return;
     }
 
+    [document markCurrentStateSaved];
     SVStopAudition(self);
     SVSetCurrentBankPath(self, panel.URL.path);
     SVSetPathLabel(self, @"Opened", panel.URL.path);
@@ -132,7 +191,7 @@ BOOL SVWriteBank(SVAppDelegate* delegate, NSString* path) {
     (void)sender;
     NSString* path = SVCurrentBankPath(self);
     if (path.length == 0U) {
-        [self saveBankAsCommand:self];
+        (void)SVSaveBankAs(self);
         return;
     }
     (void)SVWriteBank(self, path);
@@ -140,16 +199,7 @@ BOOL SVWriteBank(SVAppDelegate* delegate, NSString* path) {
 
 - (void)saveBankAsCommand:(id)sender {
     (void)sender;
-    NSSavePanel* panel = [NSSavePanel savePanel];
-    panel.title = @"Save SILVETON bank";
-    panel.prompt = @"Save";
-    NSString* currentPath = SVCurrentBankPath(self);
-    panel.nameFieldStringValue = currentPath.length == 0U ? @"SILVETON_BANK.sv" : currentPath.lastPathComponent;
-    panel.allowedFileTypes = @[@"sv"];
-    panel.allowsOtherFileTypes = NO;
-    panel.canCreateDirectories = YES;
-    if ([panel runModal] != NSModalResponseOK || panel.URL.path == nil) return;
-    (void)SVWriteBank(self, panel.URL.path);
+    (void)SVSaveBankAs(self);
 }
 
 @end
