@@ -53,6 +53,7 @@ if(APPLE)
         src/app/WaveformInteraction.mm
         src/app/SampleAuditionPlayer.mm
         src/app/MultisampleEditorController.mm
+        src/app/BankOrganizerController.mm
         src/app/ManagerDocument.mm
     )
 
