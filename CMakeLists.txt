@@ -59,6 +59,7 @@ if(APPLE)
         src/app/ConverterController.mm
         src/app/MediaController.mm
         src/app/MediaUnsavedGuard.mm
+        src/app/WorkflowController.mm
         src/app/ObjectManagerController.mm
         src/app/MainWindowController.mm
         src/app/WaveformInteraction.mm
