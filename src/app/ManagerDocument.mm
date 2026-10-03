@@ -3,6 +3,7 @@
 #include "silveton/manager/AudioFileLoader.h"
 #include "silveton/manager/KorgImporter.h"
 #include "silveton/manager/SampleEditor.h"
+#include "silveton/manager/SoundEditor.h"
 #include "silveton/manager/SvBankBuilder.h"
 
 #include <algorithm>
@@ -118,6 +119,11 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 
 bool validSoundIndex(const BankProject& project, NSUInteger index) noexcept {
     return static_cast<std::size_t>(index) < project.sounds.size();
+}
+
+bool validSoundLayerIndex(const BankProject& project, NSUInteger soundIndex, NSUInteger layerIndex) noexcept {
+    if (!validSoundIndex(project, soundIndex)) return false;
+    return static_cast<std::size_t>(layerIndex) < project.sounds[static_cast<std::size_t>(soundIndex)].layers.size();
 }
 
 template <typename EditFunction>
@@ -316,6 +322,22 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 - (NSUInteger)soundCount;
 - (NSArray<NSString*>*)soundDisplayRows;
 - (NSDictionary<NSString*, id>*)soundStateAtIndex:(NSUInteger)index;
+- (NSArray<NSDictionary<NSString*, id>*>*)soundLayerStatesAtIndex:(NSUInteger)index;
+- (BOOL)addSoundLayerAtIndex:(NSUInteger)soundIndex multisampleIndex:(NSUInteger)multisampleIndex error:(NSString**)error;
+- (BOOL)removeSoundLayerAtIndex:(NSUInteger)soundIndex layerIndex:(NSUInteger)layerIndex error:(NSString**)error;
+- (BOOL)updateSoundLayerAtIndex:(NSUInteger)soundIndex
+                     layerIndex:(NSUInteger)layerIndex
+               multisampleIndex:(NSUInteger)multisampleIndex
+                        enabled:(BOOL)enabled
+                         keyLow:(NSUInteger)keyLow
+                        keyHigh:(NSUInteger)keyHigh
+                    velocityLow:(NSUInteger)velocityLow
+                   velocityHigh:(NSUInteger)velocityHigh
+             transposeSemitones:(NSInteger)transposeSemitones
+                      tuneCents:(float)tuneCents
+                        levelDb:(float)levelDb
+                            pan:(float)pan
+                          error:(NSString**)error;
 - (BOOL)updateSoundAtIndex:(NSUInteger)index name:(NSString*)name bank:(NSUInteger)bank page:(NSUInteger)page slot:(NSUInteger)slot category:(NSUInteger)category error:(NSString**)error;
 - (NSDictionary<NSString*, NSNumber*>*)nextFreeSoundAddressFromBank:(NSUInteger)bank page:(NSUInteger)page slot:(NSUInteger)slot excludingIndex:(NSUInteger)excludingIndex error:(NSString**)error;
 - (BOOL)autoPackSoundAddressesFromBank:(NSUInteger)bank page:(NSUInteger)page slot:(NSUInteger)slot error:(NSString**)error;
@@ -377,42 +399,59 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 
 - (BOOL)buildBankAtPath:(NSString*)path error:(NSString**)error summary:(NSString**)summary {
     if (_project.sounds.empty() || _project.multisamples.empty() || _project.samples.empty()) {
-        if (error != nullptr) *error = @"Nothing has been imported yet."; return NO;
+        if (error != nullptr) *error = @"Nothing has been imported yet.";
+        return NO;
     }
-    if (path.length == 0U) { if (error != nullptr) *error = @"No output path was selected."; return NO; }
-    SvBuildStats stats{}; std::string buildError;
-    if (!SvBankBuilder::writeAtomic([path fileSystemRepresentation], _project, stats, buildError)) { setError(error, buildError); return NO; }
+    if (path.length == 0U) {
+        if (error != nullptr) *error = @"No output path was selected.";
+        return NO;
+    }
+    SvBuildStats stats{};
+    std::string buildError;
+    if (!SvBankBuilder::writeAtomic([path fileSystemRepresentation], _project, stats, buildError)) {
+        setError(error, buildError);
+        return NO;
+    }
     if (summary != nullptr) {
         const double beforeMiB = static_cast<double>(stats.audioBytesBeforeDedup) / (1024.0 * 1024.0);
         const double afterMiB = static_cast<double>(stats.audioBytesAfterDedup) / (1024.0 * 1024.0);
         *summary = [NSString stringWithFormat:@"Built %u SOUNDs · %u multisamples · %u samples · %u unique audio payloads · %.1f -> %.1f MiB",
                     stats.soundCount, stats.multisampleCount, stats.sampleCount, stats.uniqueAudioPayloadCount, beforeMiB, afterMiB];
     }
-    clearError(error); return YES;
+    clearError(error);
+    return YES;
 }
 
 - (NSArray<NSString*>*)displayRows {
     NSMutableArray<NSString*>* rows = [NSMutableArray arrayWithCapacity:_project.sounds.size()];
     for (std::size_t i = 0U; i < _project.sounds.size(); ++i) {
-        const auto& sound = _project.sounds[i]; std::size_t zones = 0U;
-        for (const auto& layer : sound.layers) if (layer.multisampleIndex < _project.multisamples.size()) zones += _project.multisamples[layer.multisampleIndex].zones.size();
-        [rows addObject:[NSString stringWithFormat:@"%03zu   %@   ·   %zu zone%@   ·   B%u P%u S%u   ·   C%u",
-                         i + 1U, nsString(sound.name), zones, zones == 1U ? @"" : @"s", sound.bank, sound.page, sound.slot, sound.category]];
+        const auto& sound = _project.sounds[i];
+        std::size_t zones = 0U;
+        for (const auto& layer : sound.layers) {
+            if (layer.multisampleIndex < _project.multisamples.size()) zones += _project.multisamples[layer.multisampleIndex].zones.size();
+        }
+        [rows addObject:[NSString stringWithFormat:@"%03zu   %@   ·   %zu layer%@   ·   %zu zone%@   ·   B%u P%u S%u   ·   C%u",
+                         i + 1U, nsString(sound.name), sound.layers.size(), sound.layers.size() == 1U ? @"" : @"s",
+                         zones, zones == 1U ? @"" : @"s", sound.bank, sound.page, sound.slot, sound.category]];
     }
     return rows;
 }
 
 - (NSString*)statusSummary {
-    std::uint64_t audioBytes = 0U; for (const auto& sample : _project.samples) audioBytes += static_cast<std::uint64_t>(sample.audioData.size());
+    std::uint64_t audioBytes = 0U;
+    for (const auto& sample : _project.samples) audioBytes += static_cast<std::uint64_t>(sample.audioData.size());
     const double mib = static_cast<double>(audioBytes) / (1024.0 * 1024.0);
     return [NSString stringWithFormat:@"%zu SOUNDs   ·   %zu multisamples   ·   %zu samples   ·   %.1f MiB source audio",
             _project.sounds.size(), _project.multisamples.size(), _project.samples.size(), mib];
 }
 
 - (void)clearProject {
-    _project = BankProject{}; _project.name = "SILVETON BANK";
-    clearHistory(_undoHistory, _undoHistoryBytes); clearHistory(_redoHistory, _redoHistoryBytes);
-    _sampleClipboard = SampleRegion{}; _hasSampleClipboard = false;
+    _project = BankProject{};
+    _project.name = "SILVETON BANK";
+    clearHistory(_undoHistory, _undoHistoryBytes);
+    clearHistory(_redoHistory, _redoHistoryBytes);
+    _sampleClipboard = SampleRegion{};
+    _hasSampleClipboard = false;
 }
 
 - (NSUInteger)sampleCount { return static_cast<NSUInteger>(_project.samples.size()); }
@@ -451,13 +490,16 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 
 - (NSArray<NSNumber*>*)waveformAtIndex:(NSUInteger)index pointCount:(NSUInteger)pointCount error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return nil; }
-    std::vector<WaveformPoint> points; std::string editError;
+    std::vector<WaveformPoint> points;
+    std::string editError;
     if (!SampleEditor::buildWaveform(_project.samples[static_cast<std::size_t>(index)], static_cast<std::size_t>(pointCount), points, editError)) {
-        setError(error, editError); return nil;
+        setError(error, editError);
+        return nil;
     }
     NSMutableArray<NSNumber*>* flattened = [NSMutableArray arrayWithCapacity:points.size() * 2U];
     for (const auto& point : points) { [flattened addObject:@(point.minimum)]; [flattened addObject:@(point.maximum)]; }
-    clearError(error); return flattened;
+    clearError(error);
+    return flattened;
 }
 
 - (BOOL)trimSampleAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
@@ -529,39 +571,58 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 
 - (BOOL)undoSampleEdit:(NSString**)error {
     if (_undoHistory.empty()) { if (error != nullptr) *error = @"There is no sample edit to undo."; return NO; }
-    SampleHistoryEntry entry = std::move(_undoHistory.back()); _undoHistoryBytes -= entry.storageBytes; _undoHistory.pop_back();
+    SampleHistoryEntry entry = std::move(_undoHistory.back());
+    _undoHistoryBytes -= entry.storageBytes;
+    _undoHistory.pop_back();
     if (entry.sampleIndex >= _project.samples.size()) {
         if (error != nullptr) *error = @"Undo history points to a sample that no longer exists.";
-        clearHistory(_undoHistory, _undoHistoryBytes); clearHistory(_redoHistory, _redoHistoryBytes); return NO;
+        clearHistory(_undoHistory, _undoHistoryBytes);
+        clearHistory(_redoHistory, _redoHistoryBytes);
+        return NO;
     }
     pushHistory(_redoHistory, _redoHistoryBytes, entry.sampleIndex, _project.samples[entry.sampleIndex]);
-    _project.samples[entry.sampleIndex] = std::move(entry.sample); clearError(error); return YES;
+    _project.samples[entry.sampleIndex] = std::move(entry.sample);
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)redoSampleEdit:(NSString**)error {
     if (_redoHistory.empty()) { if (error != nullptr) *error = @"There is no sample edit to redo."; return NO; }
-    SampleHistoryEntry entry = std::move(_redoHistory.back()); _redoHistoryBytes -= entry.storageBytes; _redoHistory.pop_back();
+    SampleHistoryEntry entry = std::move(_redoHistory.back());
+    _redoHistoryBytes -= entry.storageBytes;
+    _redoHistory.pop_back();
     if (entry.sampleIndex >= _project.samples.size()) {
         if (error != nullptr) *error = @"Redo history points to a sample that no longer exists.";
-        clearHistory(_undoHistory, _undoHistoryBytes); clearHistory(_redoHistory, _redoHistoryBytes); return NO;
+        clearHistory(_undoHistory, _undoHistoryBytes);
+        clearHistory(_redoHistory, _redoHistoryBytes);
+        return NO;
     }
     pushHistory(_undoHistory, _undoHistoryBytes, entry.sampleIndex, _project.samples[entry.sampleIndex]);
-    _project.samples[entry.sampleIndex] = std::move(entry.sample); clearError(error); return YES;
+    _project.samples[entry.sampleIndex] = std::move(entry.sample);
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)copySampleRangeAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
-    SampleRegion copied{}; std::string e;
+    SampleRegion copied{};
+    std::string e;
     if (!SampleEditor::copyRegion(_project.samples[static_cast<std::size_t>(index)], startFrame, endFrame, copied, e)) { setError(error, e); return NO; }
-    _sampleClipboard = std::move(copied); _hasSampleClipboard = true; clearError(error); return YES;
+    _sampleClipboard = std::move(copied);
+    _hasSampleClipboard = true;
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)cutSampleRangeAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
-    SampleRegion copied{}; std::string e;
+    SampleRegion copied{};
+    std::string e;
     if (!SampleEditor::copyRegion(_project.samples[static_cast<std::size_t>(index)], startFrame, endFrame, copied, e)) { setError(error, e); return NO; }
     const BOOL ok = applySampleEdit(_project, index, _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes, error,
-                                    [startFrame, endFrame](ImportedSample& sample, std::string& editError) { return SampleEditor::deleteRegion(sample, startFrame, endFrame, editError); }) ? YES : NO;
+                                    [startFrame, endFrame](ImportedSample& sample, std::string& editError) {
+                                        return SampleEditor::deleteRegion(sample, startFrame, endFrame, editError);
+                                    }) ? YES : NO;
     if (ok == YES) { _sampleClipboard = std::move(copied); _hasSampleClipboard = true; }
     return ok;
 }
@@ -609,9 +670,11 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 }
 
 - (BOOL)hasSampleClipboard { return _hasSampleClipboard ? YES : NO; }
+
 - (NSString*)sampleClipboardSummary {
     if (!_hasSampleClipboard) return @"Clipboard empty";
-    return [NSString stringWithFormat:@"Clipboard: %llu frames · %u Hz · %u ch", static_cast<unsigned long long>(_sampleClipboard.frameCount), _sampleClipboard.sampleRate, _sampleClipboard.channels];
+    return [NSString stringWithFormat:@"Clipboard: %llu frames · %u Hz · %u ch",
+            static_cast<unsigned long long>(_sampleClipboard.frameCount), _sampleClipboard.sampleRate, _sampleClipboard.channels];
 }
 
 - (NSUInteger)multisampleCount { return static_cast<NSUInteger>(_project.multisamples.size()); }
@@ -650,63 +713,97 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 }
 
 - (BOOL)createMultisampleNamed:(NSString*)name sampleIndexes:(NSIndexSet*)sampleIndexes error:(NSString**)error createdIndex:(NSUInteger*)createdIndex {
-    if (sampleIndexes == nil || sampleIndexes.count == 0U) { if (error != nullptr) *error = @"Select at least one sample for the new multisample."; return NO; }
-    std::vector<std::size_t> indexes; indexes.reserve(sampleIndexes.count);
+    if (sampleIndexes == nil || sampleIndexes.count == 0U) {
+        if (error != nullptr) *error = @"Select at least one sample for the new multisample.";
+        return NO;
+    }
+    std::vector<std::size_t> indexes;
+    indexes.reserve(sampleIndexes.count);
     NSUInteger current = sampleIndexes.firstIndex;
     while (current != NSNotFound) {
-        if (!validSampleIndex(_project, current)) { if (error != nullptr) *error = @"The selected sample list contains an invalid sample index."; return NO; }
-        indexes.push_back(static_cast<std::size_t>(current)); current = [sampleIndexes indexGreaterThanIndex:current];
+        if (!validSampleIndex(_project, current)) {
+            if (error != nullptr) *error = @"The selected sample list contains an invalid sample index.";
+            return NO;
+        }
+        indexes.push_back(static_cast<std::size_t>(current));
+        current = [sampleIndexes indexGreaterThanIndex:current];
     }
     auto* project = &_project;
     std::sort(indexes.begin(), indexes.end(), [project](std::size_t a, std::size_t b) {
-        const auto rootA = project->samples[a].rootKey; const auto rootB = project->samples[b].rootKey; return rootA == rootB ? a < b : rootA < rootB;
+        const auto rootA = project->samples[a].rootKey;
+        const auto rootB = project->samples[b].rootKey;
+        return rootA == rootB ? a < b : rootA < rootB;
     });
     for (std::size_t i = 1U; i < indexes.size(); ++i) {
         if (_project.samples[indexes[i - 1U]].rootKey == _project.samples[indexes[i]].rootKey) {
-            if (error != nullptr) *error = @"Automatic key mapping requires unique Root Key values. Change one of the duplicate sample Root Keys first."; return NO;
+            if (error != nullptr) *error = @"Automatic key mapping requires unique Root Key values. Change one of the duplicate sample Root Keys first.";
+            return NO;
         }
     }
     ImportedMultisample multisample{};
     NSString* trimmed = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     const std::string multisampleName = trimmed.length == 0U ? std::string("New Multisample") : std::string(trimmed.UTF8String);
-    multisample.name = multisampleName; multisample.sourceIdentity = std::string("manager:multisample:") + std::to_string(_project.multisamples.size());
+    multisample.name = multisampleName;
+    multisample.sourceIdentity = std::string("manager:multisample:") + std::to_string(_project.multisamples.size());
     multisample.zones.reserve(indexes.size());
     std::uint16_t nextLow = 0U;
     for (std::size_t i = 0U; i < indexes.size(); ++i) {
-        const std::size_t sampleIndex = indexes[i]; const auto root = _project.samples[sampleIndex].rootKey; std::uint16_t high = 127U;
+        const std::size_t sampleIndex = indexes[i];
+        const auto root = _project.samples[sampleIndex].rootKey;
+        std::uint16_t high = 127U;
         if (i + 1U < indexes.size()) {
             const auto nextRoot = _project.samples[indexes[i + 1U]].rootKey;
             high = static_cast<std::uint16_t>((static_cast<unsigned int>(root) + static_cast<unsigned int>(nextRoot)) / 2U);
         }
-        ImportedZone zone{}; zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex); zone.keyLow = static_cast<std::uint8_t>(nextLow);
-        zone.keyHigh = static_cast<std::uint8_t>(high); zone.velocityLow = 1U; zone.velocityHigh = 127U; zone.rootKey = root;
-        multisample.zones.push_back(zone); nextLow = static_cast<std::uint16_t>(high + 1U);
+        ImportedZone zone{};
+        zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex);
+        zone.keyLow = static_cast<std::uint8_t>(nextLow);
+        zone.keyHigh = static_cast<std::uint8_t>(high);
+        zone.velocityLow = 1U;
+        zone.velocityHigh = 127U;
+        zone.rootKey = root;
+        multisample.zones.push_back(zone);
+        nextLow = static_cast<std::uint16_t>(high + 1U);
     }
     const std::uint32_t multisampleIndex = static_cast<std::uint32_t>(_project.multisamples.size());
-    _project.multisamples.push_back(std::move(multisample)); appendSoundForMultisample(_project, multisampleIndex, multisampleName);
-    if (createdIndex != nullptr) *createdIndex = static_cast<NSUInteger>(multisampleIndex); clearError(error); return YES;
+    _project.multisamples.push_back(std::move(multisample));
+    appendSoundForMultisample(_project, multisampleIndex, multisampleName);
+    if (createdIndex != nullptr) *createdIndex = static_cast<NSUInteger>(multisampleIndex);
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)renameMultisampleAtIndex:(NSUInteger)index name:(NSString*)name error:(NSString**)error {
     if (!validMultisampleIndex(_project, index)) { if (error != nullptr) *error = @"No multisample is selected."; return NO; }
     NSString* trimmed = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (trimmed.length == 0U) { if (error != nullptr) *error = @"Multisample name cannot be empty."; return NO; }
-    _project.multisamples[static_cast<std::size_t>(index)].name = std::string(trimmed.UTF8String); clearError(error); return YES;
+    _project.multisamples[static_cast<std::size_t>(index)].name = std::string(trimmed.UTF8String);
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)addZoneToMultisampleAtIndex:(NSUInteger)multisampleIndex sampleIndex:(NSUInteger)sampleIndex error:(NSString**)error {
     if (!validMultisampleIndex(_project, multisampleIndex)) { if (error != nullptr) *error = @"No multisample is selected."; return NO; }
     if (!validSampleIndex(_project, sampleIndex)) { if (error != nullptr) *error = @"Select a valid sample to assign to the new zone."; return NO; }
-    ImportedZone zone{}; zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex); zone.rootKey = _project.samples[static_cast<std::size_t>(sampleIndex)].rootKey;
-    zone.keyLow = zone.rootKey; zone.keyHigh = zone.rootKey; zone.velocityLow = 1U; zone.velocityHigh = 127U;
-    _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones.push_back(zone); clearError(error); return YES;
+    ImportedZone zone{};
+    zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex);
+    zone.rootKey = _project.samples[static_cast<std::size_t>(sampleIndex)].rootKey;
+    zone.keyLow = zone.rootKey;
+    zone.keyHigh = zone.rootKey;
+    zone.velocityLow = 1U;
+    zone.velocityHigh = 127U;
+    _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones.push_back(zone);
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)removeZoneFromMultisampleAtIndex:(NSUInteger)multisampleIndex zoneIndex:(NSUInteger)zoneIndex error:(NSString**)error {
     if (!validZoneIndex(_project, multisampleIndex, zoneIndex)) { if (error != nullptr) *error = @"No valid zone is selected."; return NO; }
     auto& zones = _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones;
     if (zones.size() <= 1U) { if (error != nullptr) *error = @"A multisample must contain at least one zone."; return NO; }
-    zones.erase(zones.begin() + static_cast<std::ptrdiff_t>(zoneIndex)); clearError(error); return YES;
+    zones.erase(zones.begin() + static_cast<std::ptrdiff_t>(zoneIndex));
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)updateZoneAtMultisampleIndex:(NSUInteger)multisampleIndex
@@ -726,18 +823,28 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
     if (!validSampleIndex(_project, sampleIndex)) { if (error != nullptr) *error = @"Zone sample assignment is invalid."; return NO; }
     if (keyLow > 127U || keyHigh > 127U || keyLow > keyHigh) { if (error != nullptr) *error = @"Key range must be 0...127 and Low cannot exceed High."; return NO; }
     if (velocityLow < 1U || velocityLow > 127U || velocityHigh < 1U || velocityHigh > 127U || velocityLow > velocityHigh) {
-        if (error != nullptr) *error = @"Velocity range must be 1...127 and Low cannot exceed High."; return NO;
+        if (error != nullptr) *error = @"Velocity range must be 1...127 and Low cannot exceed High.";
+        return NO;
     }
     if (rootKey > 127U) { if (error != nullptr) *error = @"Root Key must be 0...127."; return NO; }
     if (transposeSemitones < -127 || transposeSemitones > 127) { if (error != nullptr) *error = @"Transpose must be between -127 and +127 semitones."; return NO; }
     if (!std::isfinite(tuneCents) || !std::isfinite(gainDb) || !std::isfinite(pan) || pan < -1.0F || pan > 1.0F) {
-        if (error != nullptr) *error = @"Tune/Gain must be finite and Pan must be between -1.0 and +1.0."; return NO;
+        if (error != nullptr) *error = @"Tune/Gain must be finite and Pan must be between -1.0 and +1.0.";
+        return NO;
     }
     auto& zone = _project.multisamples[static_cast<std::size_t>(multisampleIndex)].zones[static_cast<std::size_t>(zoneIndex)];
-    zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex); zone.keyLow = static_cast<std::uint8_t>(keyLow); zone.keyHigh = static_cast<std::uint8_t>(keyHigh);
-    zone.velocityLow = static_cast<std::uint8_t>(velocityLow); zone.velocityHigh = static_cast<std::uint8_t>(velocityHigh); zone.rootKey = static_cast<std::uint8_t>(rootKey);
-    zone.transposeSemitones = static_cast<std::int8_t>(transposeSemitones); zone.tuneCents = tuneCents; zone.gainDb = gainDb; zone.pan = pan;
-    clearError(error); return YES;
+    zone.sampleIndex = static_cast<std::uint32_t>(sampleIndex);
+    zone.keyLow = static_cast<std::uint8_t>(keyLow);
+    zone.keyHigh = static_cast<std::uint8_t>(keyHigh);
+    zone.velocityLow = static_cast<std::uint8_t>(velocityLow);
+    zone.velocityHigh = static_cast<std::uint8_t>(velocityHigh);
+    zone.rootKey = static_cast<std::uint8_t>(rootKey);
+    zone.transposeSemitones = static_cast<std::int8_t>(transposeSemitones);
+    zone.tuneCents = tuneCents;
+    zone.gainDb = gainDb;
+    zone.pan = pan;
+    clearError(error);
+    return YES;
 }
 
 - (NSUInteger)soundCount { return static_cast<NSUInteger>(_project.sounds.size()); }
@@ -745,63 +852,184 @@ bool nextLibraryAddress(std::uint16_t& bank, std::uint16_t& page, std::uint16_t&
 
 - (NSDictionary<NSString*, id>*)soundStateAtIndex:(NSUInteger)index {
     if (!validSoundIndex(_project, index)) return nil;
-    const auto& sound = _project.sounds[static_cast<std::size_t>(index)]; NSString* multisampleName = @"No multisample"; std::size_t zoneCount = 0U;
+    const auto& sound = _project.sounds[static_cast<std::size_t>(index)];
+    NSString* multisampleName = @"No multisample";
+    std::size_t zoneCount = 0U;
     if (!sound.layers.empty()) {
         const std::uint32_t multisampleIndex = sound.layers.front().multisampleIndex;
         if (multisampleIndex < _project.multisamples.size()) {
-            const auto& multisample = _project.multisamples[multisampleIndex]; multisampleName = nsString(multisample.name); zoneCount = multisample.zones.size();
+            const auto& multisample = _project.multisamples[multisampleIndex];
+            multisampleName = nsString(multisample.name);
+            zoneCount = multisample.zones.size();
         }
     }
     return @{@"name": nsString(sound.name), @"bank": @(sound.bank), @"page": @(sound.page), @"slot": @(sound.slot), @"category": @(sound.category),
-             @"multisampleName": multisampleName, @"zoneCount": @(static_cast<unsigned long long>(zoneCount))};
+             @"multisampleName": multisampleName, @"zoneCount": @(static_cast<unsigned long long>(zoneCount)),
+             @"layerCount": @(static_cast<unsigned long long>(sound.layers.size()))};
+}
+
+- (NSArray<NSDictionary<NSString*, id>*>*)soundLayerStatesAtIndex:(NSUInteger)index {
+    if (!validSoundIndex(_project, index)) return @[];
+    const auto& sound = _project.sounds[static_cast<std::size_t>(index)];
+    NSMutableArray<NSDictionary<NSString*, id>*>* rows = [NSMutableArray arrayWithCapacity:sound.layers.size()];
+    for (std::size_t layerIndex = 0U; layerIndex < sound.layers.size(); ++layerIndex) {
+        const auto& layer = sound.layers[layerIndex];
+        NSString* multisampleName = @"Invalid multisample";
+        std::size_t zoneCount = 0U;
+        if (layer.multisampleIndex < _project.multisamples.size()) {
+            const auto& multisample = _project.multisamples[layer.multisampleIndex];
+            multisampleName = nsString(multisample.name);
+            zoneCount = multisample.zones.size();
+        }
+        [rows addObject:@{@"layerIndex": @(static_cast<unsigned long long>(layerIndex)),
+                          @"multisampleIndex": @(layer.multisampleIndex),
+                          @"multisampleName": multisampleName,
+                          @"zoneCount": @(static_cast<unsigned long long>(zoneCount)),
+                          @"enabled": @(layer.enabled),
+                          @"keyLow": @(layer.keyLow), @"keyHigh": @(layer.keyHigh),
+                          @"velocityLow": @(layer.velocityLow), @"velocityHigh": @(layer.velocityHigh),
+                          @"transposeSemitones": @(layer.transposeSemitones),
+                          @"tuneCents": @(layer.tuneCents), @"levelDb": @(layer.levelDb), @"pan": @(layer.pan)}];
+    }
+    return rows;
+}
+
+- (BOOL)addSoundLayerAtIndex:(NSUInteger)soundIndex multisampleIndex:(NSUInteger)multisampleIndex error:(NSString**)error {
+    if (multisampleIndex > UINT32_MAX) { if (error != nullptr) *error = @"Multisample index is too large."; return NO; }
+    std::string editError;
+    if (!SoundEditor::addLayer(_project, static_cast<std::size_t>(soundIndex), static_cast<std::uint32_t>(multisampleIndex), editError)) {
+        setError(error, editError);
+        return NO;
+    }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)removeSoundLayerAtIndex:(NSUInteger)soundIndex layerIndex:(NSUInteger)layerIndex error:(NSString**)error {
+    std::string editError;
+    if (!SoundEditor::removeLayer(_project, static_cast<std::size_t>(soundIndex), static_cast<std::size_t>(layerIndex), editError)) {
+        setError(error, editError);
+        return NO;
+    }
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)updateSoundLayerAtIndex:(NSUInteger)soundIndex
+                     layerIndex:(NSUInteger)layerIndex
+               multisampleIndex:(NSUInteger)multisampleIndex
+                        enabled:(BOOL)enabled
+                         keyLow:(NSUInteger)keyLow
+                        keyHigh:(NSUInteger)keyHigh
+                    velocityLow:(NSUInteger)velocityLow
+                   velocityHigh:(NSUInteger)velocityHigh
+             transposeSemitones:(NSInteger)transposeSemitones
+                      tuneCents:(float)tuneCents
+                        levelDb:(float)levelDb
+                            pan:(float)pan
+                          error:(NSString**)error {
+    if (!validSoundLayerIndex(_project, soundIndex, layerIndex)) { if (error != nullptr) *error = @"No valid SOUND layer is selected."; return NO; }
+    if (multisampleIndex > UINT32_MAX || keyLow > 127U || keyHigh > 127U || velocityLow > 127U || velocityHigh > 127U) {
+        if (error != nullptr) *error = @"SOUND layer values are outside their supported range.";
+        return NO;
+    }
+    if (transposeSemitones < -127 || transposeSemitones > 127) {
+        if (error != nullptr) *error = @"Transpose must be between -127 and +127 semitones.";
+        return NO;
+    }
+    std::string editError;
+    if (!SoundEditor::updateLayer(_project,
+                                  static_cast<std::size_t>(soundIndex),
+                                  static_cast<std::size_t>(layerIndex),
+                                  static_cast<std::uint32_t>(multisampleIndex),
+                                  enabled == YES,
+                                  static_cast<std::uint8_t>(keyLow),
+                                  static_cast<std::uint8_t>(keyHigh),
+                                  static_cast<std::uint8_t>(velocityLow),
+                                  static_cast<std::uint8_t>(velocityHigh),
+                                  static_cast<std::int8_t>(transposeSemitones),
+                                  tuneCents,
+                                  levelDb,
+                                  pan,
+                                  editError)) {
+        setError(error, editError);
+        return NO;
+    }
+    clearError(error);
+    return YES;
 }
 
 - (BOOL)updateSoundAtIndex:(NSUInteger)index name:(NSString*)name bank:(NSUInteger)bank page:(NSUInteger)page slot:(NSUInteger)slot category:(NSUInteger)category error:(NSString**)error {
     if (!validSoundIndex(_project, index)) { if (error != nullptr) *error = @"No bank/library entry is selected."; return NO; }
     if (bank > kLibraryAxisMaximum || page > kLibraryAxisMaximum || slot > kLibraryAxisMaximum || category > kLibraryAxisMaximum) {
-        if (error != nullptr) *error = @"Bank, Page, Slot and Category must each be between 0 and 127."; return NO;
+        if (error != nullptr) *error = @"Bank, Page, Slot and Category must each be between 0 and 127.";
+        return NO;
     }
     NSString* trimmed = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (trimmed.length == 0U) { if (error != nullptr) *error = @"Library entry name cannot be empty."; return NO; }
-    const auto b = static_cast<std::uint16_t>(bank); const auto p = static_cast<std::uint16_t>(page); const auto s = static_cast<std::uint16_t>(slot);
+    const auto b = static_cast<std::uint16_t>(bank);
+    const auto p = static_cast<std::uint16_t>(page);
+    const auto s = static_cast<std::uint16_t>(slot);
     if (soundAddressInUse(_project, b, p, s, static_cast<std::size_t>(index))) {
-        if (error != nullptr) *error = [NSString stringWithFormat:@"Bank %lu / Page %lu / Slot %lu is already occupied.", (unsigned long)bank, (unsigned long)page, (unsigned long)slot];
+        if (error != nullptr) *error = [NSString stringWithFormat:@"Bank %lu / Page %lu / Slot %lu is already occupied.",
+                                        (unsigned long)bank, (unsigned long)page, (unsigned long)slot];
         return NO;
     }
-    auto& sound = _project.sounds[static_cast<std::size_t>(index)]; sound.name = std::string(trimmed.UTF8String); sound.bank = b; sound.page = p; sound.slot = s;
-    sound.category = static_cast<std::uint16_t>(category); clearError(error); return YES;
+    auto& sound = _project.sounds[static_cast<std::size_t>(index)];
+    sound.name = std::string(trimmed.UTF8String);
+    sound.bank = b;
+    sound.page = p;
+    sound.slot = s;
+    sound.category = static_cast<std::uint16_t>(category);
+    clearError(error);
+    return YES;
 }
 
 - (NSDictionary<NSString*, NSNumber*>*)nextFreeSoundAddressFromBank:(NSUInteger)bank page:(NSUInteger)page slot:(NSUInteger)slot excludingIndex:(NSUInteger)excludingIndex error:(NSString**)error {
     if (bank > kLibraryAxisMaximum || page > kLibraryAxisMaximum || slot > kLibraryAxisMaximum) {
-        if (error != nullptr) *error = @"Bank, Page and Slot must each be between 0 and 127."; return nil;
+        if (error != nullptr) *error = @"Bank, Page and Slot must each be between 0 and 127.";
+        return nil;
     }
-    std::uint16_t b = static_cast<std::uint16_t>(bank); std::uint16_t p = static_cast<std::uint16_t>(page); std::uint16_t s = static_cast<std::uint16_t>(slot);
+    std::uint16_t b = static_cast<std::uint16_t>(bank);
+    std::uint16_t p = static_cast<std::uint16_t>(page);
+    std::uint16_t s = static_cast<std::uint16_t>(slot);
     const std::size_t excluded = excludingIndex == NSNotFound ? _project.sounds.size() : static_cast<std::size_t>(excludingIndex);
     while (true) {
-        if (!soundAddressInUse(_project, b, p, s, excluded)) { clearError(error); return @{@"bank": @(b), @"page": @(p), @"slot": @(s)}; }
+        if (!soundAddressInUse(_project, b, p, s, excluded)) {
+            clearError(error);
+            return @{@"bank": @(b), @"page": @(p), @"slot": @(s)};
+        }
         if (!nextLibraryAddress(b, p, s)) break;
     }
-    if (error != nullptr) *error = @"No free Bank/Page/Slot address exists at or after the requested position."; return nil;
+    if (error != nullptr) *error = @"No free Bank/Page/Slot address exists at or after the requested position.";
+    return nil;
 }
 
 - (BOOL)autoPackSoundAddressesFromBank:(NSUInteger)bank page:(NSUInteger)page slot:(NSUInteger)slot error:(NSString**)error {
     if (bank > kLibraryAxisMaximum || page > kLibraryAxisMaximum || slot > kLibraryAxisMaximum) {
-        if (error != nullptr) *error = @"Bank, Page and Slot must each be between 0 and 127."; return NO;
+        if (error != nullptr) *error = @"Bank, Page and Slot must each be between 0 and 127.";
+        return NO;
     }
     if (_project.sounds.empty()) { if (error != nullptr) *error = @"There are no library entries to pack."; return NO; }
-    std::uint16_t b = static_cast<std::uint16_t>(bank); std::uint16_t p = static_cast<std::uint16_t>(page); std::uint16_t s = static_cast<std::uint16_t>(slot);
-    std::vector<std::array<std::uint16_t, 3U>> addresses; addresses.reserve(_project.sounds.size());
+    std::uint16_t b = static_cast<std::uint16_t>(bank);
+    std::uint16_t p = static_cast<std::uint16_t>(page);
+    std::uint16_t s = static_cast<std::uint16_t>(slot);
+    std::vector<std::array<std::uint16_t, 3U>> addresses;
+    addresses.reserve(_project.sounds.size());
     for (std::size_t i = 0U; i < _project.sounds.size(); ++i) {
         addresses.push_back({b, p, s});
         if (i + 1U < _project.sounds.size() && !nextLibraryAddress(b, p, s)) {
-            if (error != nullptr) *error = @"There is not enough Bank/Page/Slot space to pack all entries from this starting address."; return NO;
+            if (error != nullptr) *error = @"There is not enough Bank/Page/Slot space to pack all entries from this starting address.";
+            return NO;
         }
     }
     for (std::size_t i = 0U; i < _project.sounds.size(); ++i) {
-        _project.sounds[i].bank = addresses[i][0]; _project.sounds[i].page = addresses[i][1]; _project.sounds[i].slot = addresses[i][2];
+        _project.sounds[i].bank = addresses[i][0];
+        _project.sounds[i].page = addresses[i][1];
+        _project.sounds[i].slot = addresses[i][2];
     }
-    clearError(error); return YES;
+    clearError(error);
+    return YES;
 }
 
 @end
