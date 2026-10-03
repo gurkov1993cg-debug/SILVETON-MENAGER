@@ -42,7 +42,11 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 ### `src/app/AppDelegate.mm`
 - Owns the main window controller for the full application lifetime.
 - Shows/centers the real Manager window at launch and activates the application.
-- Terminates the process after the last Manager window is closed.
+- Terminates after the last Manager window closes.
+
+### `src/app/main.mm`
+- Creates the native `NSApplication`, installs the real app delegate, selects regular application activation policy and runs the AppKit event loop.
+- No storyboard, Swift runtime or browser wrapper is required.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -64,10 +68,10 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - SHA-256 standard `abc` vector PASS.
 - Local `.sv` round-trip/exact-audio/dedup/corruption tests PASS.
 - Release core + tests build with `-Werror`; `ctest` 1/1 PASS.
-- AppKit document/window/delegate are committed; `main.mm` and first real Intel macOS application build remain before app-build success can be claimed.
+- All four CMake-referenced AppKit `.mm` source files now exist.
+- Full native application build is not yet claimed until the first Intel macOS compile/link/package run completes.
 
 ## Next
-1. Implement `main.mm`.
-2. Run first Intel/macOS build and fix actual compiler/link findings.
-3. Replace empty GitHub Actions workflow and run Intel macOS CI.
-4. Add folder/batch workflow polish and tablet transfer.
+1. Run first Intel/macOS build and fix actual compiler/link findings.
+2. Replace the empty GitHub Actions workflow with Intel macOS CI and package the `.app`.
+3. Add folder/batch workflow polish and tablet transfer.
