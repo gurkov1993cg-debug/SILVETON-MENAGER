@@ -5,6 +5,7 @@
 - (void)saveBankCommand:(id)sender;
 - (void)saveBankAsCommand:(id)sender;
 - (void)showMediaCommand:(id)sender;
+- (void)showObjectManagerCommand:(id)sender;
 @end
 
 namespace {
@@ -57,6 +58,13 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     mediaItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     mediaItem.target = delegate;
     [fileMenu addItem:mediaItem];
+
+    NSMenuItem* objectItem = [[NSMenuItem alloc] initWithTitle:@"Object Manager…"
+                                                       action:@selector(showObjectManagerCommand:)
+                                                keyEquivalent:@"J"];
+    objectItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    objectItem.target = delegate;
+    [fileMenu addItem:objectItem];
 }
 
 } // namespace
