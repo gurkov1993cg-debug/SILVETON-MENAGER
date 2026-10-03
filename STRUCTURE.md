@@ -24,30 +24,28 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - Intel/macOS baseline, core library, AppKit target and tests.
 
 ### `include/silveton/manager/ManagerTypes.h`
-- Canonical Manager sample/multisample/SOUND data model.
-- Korg raw pan/level/filter source metadata retained.
+- Canonical Manager sample/multisample/SOUND data model and preserved raw Korg source metadata.
 
 ### `include/silveton/manager/KorgImporter.h`
 ### `src/core/KorgImporter.cpp`
-- KSF/KMP/KSC parser.
-- KSF PCM16 big-endian -> canonical PCM16LE without resampling.
-- Exact KMP key ranges/root/tune/non-transpose/source metadata retained.
-- Relative KSC dependencies and KSF lookup implemented.
+- KSF/KMP/KSC parser with canonical PCM16LE output, exact zones and dependency loading.
 
 ### `include/silveton/manager/SampleHash.h`
 ### `src/core/SampleHash.cpp`
-- Deterministic FNV-1a sample-audio hash including format metadata.
-- Hash only selects dedup candidates; exact byte equality remains mandatory.
+- Deterministic sample-audio hash; exact byte equality remains required for dedup.
 
 ### `include/silveton/manager/SvBankFormat.h`
 ### `src/core/SvBankFormat.cpp`
-- `.sv` v1 fixed 256-byte header, seven indexed sections and fixed-size records.
-- Explicit little-endian serializer/parser; architecture-independent Intel -> ARM data.
-- SHA-256 payload integrity with no external dependency.
+- `.sv` v1 fixed header/records, explicit little-endian serialization and internal SHA-256.
 
 ### `include/silveton/manager/SvBankBuilder.h`
-- Declares in-memory bank build and atomic file-write operations.
-- Build statistics expose SOUND/multisample/sample/zone counts and before/after audio dedup byte counts.
+### `src/core/SvBankBuilder.cpp`
+- Validates all sample, zone and SOUND references before writing.
+- Builds deduplicated string and audio payloads.
+- Audio dedup uses hash buckets plus exact format and byte equality, so a hash collision cannot merge different audio.
+- Generates fixed metadata sections and 4096-byte-aligned audio payload for random access/streaming.
+- Computes SHA-256 over all payload bytes and writes the final header last.
+- Provides atomic `.tmp` -> target replacement and build statistics.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -61,17 +59,18 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 5. Sample records.
 6. Zone records.
 7. Deduplicated string table.
-8. Audio payload section; builder aligns it to 4096 bytes for random access/streaming.
+8. 4096-byte-aligned deduplicated audio payload.
 
 ## Verification status
 - Development branch exists; `main` untouched.
-- Strict local SALEAS Korg import smoke test PASS.
-- SHA-256 matches the standard `abc` test vector locally.
-- In-progress bank builder/reader locally passes round-trip, exact audio recovery, dedup and corruption rejection.
-- Repository-wide build is not yet claimed until all CMake-referenced sources and tests are committed and CI runs.
+- Strict local SALEAS import smoke test PASS.
+- SHA-256 standard `abc` vector PASS.
+- Local builder/reader round-trip PASS using SALEAS data.
+- Dedup test PASS: an added duplicate sample produces 14 sample records but only 13 physical audio payloads.
+- Repository-wide build is not yet claimed until reader, audio loader, tests and remaining CMake sources are committed.
 
 ## Next
-1. Commit bank builder implementation and reader contract/implementation.
+1. Commit bank reader contract/implementation.
 2. WAV/AIFF importer.
 3. Regression tests + clean core build.
 4. Native AppKit GUI.
