@@ -17,6 +17,7 @@ option(SILVETON_MANAGER_BUILD_TESTS "Build SILVETON Manager tests" ON)
 set(SILVETON_MANAGER_CORE_SOURCES
     src/core/AudioFileLoader.cpp
     src/core/KorgImporter.cpp
+    src/core/MediaPathPolicy.cpp
     src/core/SampleEditor.cpp
     src/core/SampleEditorRegions.cpp
     src/core/SoundEditor.cpp
@@ -51,6 +52,7 @@ if(APPLE)
         src/app/main.mm
         src/app/AppDelegate.mm
         src/app/BankFileCommands.mm
+        src/app/MediaController.mm
         src/app/MainWindowController.mm
         src/app/WaveformInteraction.mm
         src/app/SampleAuditionPlayer.mm
@@ -92,10 +94,14 @@ if(SILVETON_MANAGER_BUILD_TESTS)
     add_executable(silveton_sound_editor_tests
         tests/SoundEditorTests.cpp
     )
+    add_executable(silveton_media_path_tests
+        tests/MediaPathPolicyTests.cpp
+    )
 
     target_link_libraries(silveton_manager_tests PRIVATE silveton_manager_core)
     target_link_libraries(silveton_sample_editor_region_tests PRIVATE silveton_manager_core)
     target_link_libraries(silveton_sound_editor_tests PRIVATE silveton_manager_core)
+    target_link_libraries(silveton_media_path_tests PRIVATE silveton_manager_core)
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
         target_compile_options(silveton_manager_tests PRIVATE
@@ -122,11 +128,20 @@ if(SILVETON_MANAGER_BUILD_TESTS)
             -Wconversion
             -Werror
         )
+        target_compile_options(silveton_media_path_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wshadow
+            -Wconversion
+            -Werror
+        )
     endif()
 
     add_test(NAME silveton_manager_core COMMAND silveton_manager_tests)
     add_test(NAME silveton_sample_editor_regions COMMAND silveton_sample_editor_region_tests)
     add_test(NAME silveton_sound_editor COMMAND silveton_sound_editor_tests)
+    add_test(NAME silveton_media_paths COMMAND silveton_media_path_tests)
 
     if(APPLE)
         add_executable(silveton_manager_bank_io_tests
