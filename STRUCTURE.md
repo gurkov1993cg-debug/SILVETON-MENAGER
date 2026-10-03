@@ -19,53 +19,30 @@ Updated: 2026-10-03
 Tablet runtime must only open the prepared bank/index and stream audio; it must not rebuild KMP/KSC structures on startup.
 
 ## Implemented files
-
-### `CMakeLists.txt`
-- Portable core project declares C/CXX globally and enables Objective-C++ only on Apple.
-- macOS is locked to x86_64 and deployment target 10.13.
-- Core/tests compile with strict warnings as errors.
-- AppKit bundle target remains Apple-only.
-
-### `include/silveton/manager/ManagerTypes.h`
-- Canonical Manager sample/multisample/SOUND model with preserved raw Korg source metadata.
-
-### `include/silveton/manager/KorgImporter.h`
-### `src/core/KorgImporter.cpp`
-- KSF/KMP/KSC parsing, canonical PCM16LE output, exact zones and dependency loading.
-
-### `include/silveton/manager/SampleHash.h`
-### `src/core/SampleHash.cpp`
-- Deterministic sample-audio hash; exact byte equality remains mandatory for dedup.
-
-### `include/silveton/manager/SvBankFormat.h`
-### `src/core/SvBankFormat.cpp`
-- `.sv` v1 fixed header/records, explicit little-endian serialization and SHA-256.
-
-### `include/silveton/manager/SvBankBuilder.h`
-### `src/core/SvBankBuilder.cpp`
-- Reference validation, deduplication, 4096-byte audio alignment, SHA-256 and atomic writing.
-
-### `include/silveton/manager/SvBankReader.h`
-### `src/core/SvBankReader.cpp`
-- Bounds/integrity/reference validation and full project reconstruction.
-
-### `include/silveton/manager/AudioFileLoader.h`
-### `src/core/AudioFileLoader.cpp`
-- WAV PCM16/PCM24/Float32 import with `smpl` root/forward loop support.
-- AIFF PCM16/PCM24 and AIFC `NONE`/`sowt` import; canonical little-endian output.
-- AIFF INST root key and valid forward sustain loop support.
-
-### `tests/ManagerCoreTests.cpp`
-- Always-active Release-safe regression checks.
-- Synthetic KSF/KMP/WAV/AIFF fixtures plus `.sv` integrity/dedup/round-trip tests.
+- `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors.
+- `include/silveton/manager/ManagerTypes.h`: canonical Manager sample/multisample/SOUND model and preserved raw Korg metadata.
+- `include/silveton/manager/KorgImporter.h`, `src/core/KorgImporter.cpp`: KSF/KMP/KSC import, exact zones/dependencies, canonical PCM16LE.
+- `include/silveton/manager/SampleHash.h`, `src/core/SampleHash.cpp`: deterministic sample-audio hashing plus exact-byte dedup policy.
+- `include/silveton/manager/SvBankFormat.h`, `src/core/SvBankFormat.cpp`: `.sv` v1 explicit little-endian fixed records + SHA-256.
+- `include/silveton/manager/SvBankBuilder.h`, `src/core/SvBankBuilder.cpp`: reference validation, string/audio dedup, 4096-byte audio alignment, integrity and atomic writing.
+- `include/silveton/manager/SvBankReader.h`, `src/core/SvBankReader.cpp`: bounds/integrity/reference validation and complete project reconstruction.
+- `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata.
+- `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SHA-256, `.sv` round-trip/dedup/corruption/atomic write.
 
 ### `src/app/ManagerDocument.mm`
-- Real Manager project owner; no placeholder data.
-- Imports KMP, KSC, KSF, WAV, WAVE, AIF, AIFF and AIFC through the implemented core importers.
-- Imported KMP/KSC multisamples become real SOUND records with deterministic Bank/Page/Slot addresses.
-- Standalone KSF/WAV/AIFF imports become one-sample multisamples and SOUNDs.
-- Build action writes the real `SILVETON_BANK.sv` through `SvBankBuilder::writeAtomic` and returns real dedup/count statistics.
-- Provides actual SOUND rows/status counts for the AppKit GUI and a real clear-project operation.
+- Real project owner, no placeholder library.
+- Imports KMP/KSC/KSF/WAV/WAVE/AIF/AIFF/AIFC through the core.
+- KMP/KSC multisamples become real SOUND records with deterministic Bank/Page/Slot addresses.
+- Standalone samples become real one-zone multisamples and SOUNDs.
+- Real bank build through `SvBankBuilder::writeAtomic`, exposing actual counts/dedup statistics.
+- Real clear/status/SOUND list operations.
+
+### `src/app/MainWindowController.mm`
+- Native AppKit window with only real controls.
+- `Import Samples…` opens the actual importer path and refreshes actual SOUND rows/counts.
+- `Clear` clears the real in-memory Manager project after confirmation.
+- `Build SILVETON_BANK.sv…` uses the real save path and real `.sv` builder; successful build displays real dedup/build statistics and output path.
+- Table content is generated from real imported SOUNDs; no fake CPU/meter/status widgets are present.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -85,13 +62,12 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Development branch exists; `main` untouched.
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
-- Local full `.sv` build/read round-trip, exact audio recovery, dedup and corrupt-bank rejection PASS.
-- Release CMake build with `-Werror`: core + tests build successfully; `ctest` 1/1 PASS.
-- `ManagerDocument.mm` is committed but native AppKit application build is not yet claimed until the remaining window/app/main `.mm` files exist and an Intel macOS build runs.
+- Local `.sv` round-trip/exact-audio/dedup/corruption tests PASS.
+- Release core + tests build with `-Werror`; `ctest` 1/1 PASS.
+- Native AppKit window/document code is committed, but full macOS application build is not yet claimed until AppDelegate/main are committed and Intel macOS CI runs.
 
 ## Next
-1. Implement native MainWindowController with only real Import/Clear/Build actions.
-2. Implement AppDelegate and main entry.
-3. Build the Intel macOS application target.
-4. Replace the empty GitHub Actions workflow and run Intel macOS CI.
-5. Add batch workflow polish and tablet transfer.
+1. Implement AppDelegate and main entry.
+2. Fix any Intel/macOS compiler findings from the first real AppKit build.
+3. Replace the empty GitHub Actions workflow and run Intel macOS CI.
+4. Add folder/batch workflow polish and tablet transfer.
