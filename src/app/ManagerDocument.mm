@@ -9,12 +9,23 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
 using namespace silveton::manager;
+
+struct SampleHistoryEntry {
+    std::size_t sampleIndex{0U};
+    ImportedSample sample{};
+    std::size_t storageBytes{0U};
+};
+
+constexpr std::size_t kMaxSampleHistoryEntries = 16U;
+constexpr std::size_t kMaxSampleHistoryBytes = 256U * 1024U * 1024U;
 
 std::size_t filenameStart(const std::string& path) noexcept {
     const std::size_t slash = path.find_last_of("/\\");
@@ -46,6 +57,48 @@ void setError(NSString** error, const std::string& message) {
 
 void clearError(NSString** error) {
     if (error != nullptr) *error = nil;
+}
+
+std::size_t sampleStorageBytes(const ImportedSample& sample) noexcept {
+    return sizeof(ImportedSample) + sample.audioData.size() + sample.name.size() + sample.sourcePath.size() + sample.sourceIdentity.size();
+}
+
+void clearHistory(std::deque<SampleHistoryEntry>& history, std::size_t& historyBytes) noexcept {
+    history.clear();
+    historyBytes = 0U;
+}
+
+void trimHistory(std::deque<SampleHistoryEntry>& history, std::size_t& historyBytes) noexcept {
+    while (history.size() > kMaxSampleHistoryEntries ||
+           (historyBytes > kMaxSampleHistoryBytes && history.size() > 1U)) {
+        historyBytes -= history.front().storageBytes;
+        history.pop_front();
+    }
+}
+
+void pushHistory(std::deque<SampleHistoryEntry>& history,
+                 std::size_t& historyBytes,
+                 std::size_t sampleIndex,
+                 const ImportedSample& sample) {
+    SampleHistoryEntry entry{};
+    entry.sampleIndex = sampleIndex;
+    entry.sample = sample;
+    entry.storageBytes = sampleStorageBytes(entry.sample);
+    historyBytes += entry.storageBytes;
+    history.push_back(std::move(entry));
+    trimHistory(history, historyBytes);
+}
+
+void commitSampleEdit(BankProject& project,
+                      std::size_t sampleIndex,
+                      ImportedSample edited,
+                      std::deque<SampleHistoryEntry>& undoHistory,
+                      std::size_t& undoBytes,
+                      std::deque<SampleHistoryEntry>& redoHistory,
+                      std::size_t& redoBytes) {
+    pushHistory(undoHistory, undoBytes, sampleIndex, project.samples[sampleIndex]);
+    clearHistory(redoHistory, redoBytes);
+    project.samples[sampleIndex] = std::move(edited);
 }
 
 void assignAutomaticAddress(SoundDefinition& sound, std::size_t index) {
@@ -137,6 +190,10 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 @interface SVManagerDocument : NSObject {
 @private
     silveton::manager::BankProject _project;
+    std::deque<SampleHistoryEntry> _undoHistory;
+    std::deque<SampleHistoryEntry> _redoHistory;
+    std::size_t _undoHistoryBytes;
+    std::size_t _redoHistoryBytes;
 }
 - (BOOL)importPaths:(NSArray<NSString*>*)paths error:(NSString**)error;
 - (BOOL)buildBankAtPath:(NSString*)path error:(NSString**)error summary:(NSString**)summary;
@@ -147,6 +204,7 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 - (NSUInteger)sampleCount;
 - (NSArray<NSString*>*)sampleDisplayRows;
 - (NSDictionary<NSString*, id>*)sampleStateAtIndex:(NSUInteger)index;
+- (NSDictionary<NSString*, id>*)auditionStateAtIndex:(NSUInteger)index error:(NSString**)error;
 - (NSArray<NSNumber*>*)waveformAtIndex:(NSUInteger)index pointCount:(NSUInteger)pointCount error:(NSString**)error;
 - (BOOL)trimSampleAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error;
 - (BOOL)setLoopForSampleAtIndex:(NSUInteger)index enabled:(BOOL)enabled startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error;
@@ -159,6 +217,10 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 - (BOOL)setRootKeyForSampleAtIndex:(NSUInteger)index rootKey:(uint8_t)rootKey error:(NSString**)error;
 - (BOOL)setFineTuneForSampleAtIndex:(NSUInteger)index cents:(float)cents error:(NSString**)error;
 - (uint64_t)nearestZeroCrossingForSampleAtIndex:(NSUInteger)index frame:(uint64_t)frame radius:(uint64_t)radius;
+- (BOOL)canUndoSampleEdit;
+- (BOOL)canRedoSampleEdit;
+- (BOOL)undoSampleEdit:(NSString**)error;
+- (BOOL)redoSampleEdit:(NSString**)error;
 
 - (NSUInteger)multisampleCount;
 - (NSArray<NSString*>*)multisampleDisplayRows;
@@ -187,7 +249,11 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 
 - (instancetype)init {
     self = [super init];
-    if (self) _project.name = "SILVETON BANK";
+    if (self) {
+        _project.name = "SILVETON BANK";
+        _undoHistoryBytes = 0U;
+        _redoHistoryBytes = 0U;
+    }
     return self;
 }
 
@@ -312,6 +378,8 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 - (void)clearProject {
     _project = BankProject{};
     _project.name = "SILVETON BANK";
+    clearHistory(_undoHistory, _undoHistoryBytes);
+    clearHistory(_redoHistory, _redoHistoryBytes);
 }
 
 - (NSUInteger)sampleCount {
@@ -350,6 +418,32 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
     };
 }
 
+- (NSDictionary<NSString*, id>*)auditionStateAtIndex:(NSUInteger)index error:(NSString**)error {
+    if (!validSampleIndex(_project, index)) {
+        if (error != nullptr) *error = @"No sample is selected.";
+        return nil;
+    }
+    const auto& sample = _project.samples[static_cast<std::size_t>(index)];
+    if (!sample.valid() || sample.audioData.empty()) {
+        if (error != nullptr) *error = @"The selected sample has no valid audio data.";
+        return nil;
+    }
+    NSData* audio = [NSData dataWithBytes:sample.audioData.data() length:static_cast<NSUInteger>(sample.audioData.size())];
+    clearError(error);
+    return @{
+        @"name": nsString(sample.name),
+        @"audioData": audio,
+        @"sampleRate": [NSNumber numberWithUnsignedInt:sample.sampleRate],
+        @"channels": [NSNumber numberWithUnsignedInt:sample.channels],
+        @"encoding": [NSNumber numberWithUnsignedInt:static_cast<unsigned int>(sample.encoding)],
+        @"bitsPerSample": [NSNumber numberWithUnsignedInt:sample.bitsPerSample],
+        @"totalFrames": [NSNumber numberWithUnsignedLongLong:sample.totalFrames],
+        @"loopEnabled": [NSNumber numberWithBool:sample.loop.enabled],
+        @"loopStart": [NSNumber numberWithUnsignedLongLong:sample.loop.startFrame],
+        @"loopEnd": [NSNumber numberWithUnsignedLongLong:sample.loop.endFrame]
+    };
+}
+
 - (NSArray<NSNumber*>*)waveformAtIndex:(NSUInteger)index pointCount:(NSUInteger)pointCount error:(NSString**)error {
     if (!validSampleIndex(_project, index)) {
         if (error != nullptr) *error = @"No sample is selected.";
@@ -372,80 +466,110 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 
 - (BOOL)trimSampleAtIndex:(NSUInteger)index startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::trim(_project.samples[static_cast<std::size_t>(index)], startFrame, endFrame, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::trim(edited, startFrame, endFrame, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)setLoopForSampleAtIndex:(NSUInteger)index enabled:(BOOL)enabled startFrame:(uint64_t)startFrame endFrame:(uint64_t)endFrame error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::setLoop(_project.samples[static_cast<std::size_t>(index)], enabled == YES, startFrame, endFrame, 0U, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::setLoop(edited, enabled == YES, startFrame, endFrame, 0U, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)applyLoopCrossfadeForSampleAtIndex:(NSUInteger)index frames:(uint32_t)frames error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::applyLoopCrossfade(_project.samples[static_cast<std::size_t>(index)], frames, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::applyLoopCrossfade(edited, frames, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)reverseSampleAtIndex:(NSUInteger)index error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::reverse(_project.samples[static_cast<std::size_t>(index)], editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::reverse(edited, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)applyGainForSampleAtIndex:(NSUInteger)index gainDb:(float)gainDb error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::applyGainDb(_project.samples[static_cast<std::size_t>(index)], gainDb, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::applyGainDb(edited, gainDb, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)normalizeSampleAtIndex:(NSUInteger)index targetPeakDb:(float)targetPeakDb error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::normalize(_project.samples[static_cast<std::size_t>(index)], targetPeakDb, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::normalize(edited, targetPeakDb, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)fadeInSampleAtIndex:(NSUInteger)index frames:(uint64_t)frames error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::fadeIn(_project.samples[static_cast<std::size_t>(index)], frames, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::fadeIn(edited, frames, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)fadeOutSampleAtIndex:(NSUInteger)index frames:(uint64_t)frames error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::fadeOut(_project.samples[static_cast<std::size_t>(index)], frames, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::fadeOut(edited, frames, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)setRootKeyForSampleAtIndex:(NSUInteger)index rootKey:(uint8_t)rootKey error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::setRootKey(_project.samples[static_cast<std::size_t>(index)], rootKey, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::setRootKey(edited, rootKey, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
 
 - (BOOL)setFineTuneForSampleAtIndex:(NSUInteger)index cents:(float)cents error:(NSString**)error {
     if (!validSampleIndex(_project, index)) { if (error != nullptr) *error = @"No sample is selected."; return NO; }
+    const std::size_t sampleIndex = static_cast<std::size_t>(index);
+    ImportedSample edited = _project.samples[sampleIndex];
     std::string editError;
-    if (!SampleEditor::setFineTuneCents(_project.samples[static_cast<std::size_t>(index)], cents, editError)) { setError(error, editError); return NO; }
+    if (!SampleEditor::setFineTuneCents(edited, cents, editError)) { setError(error, editError); return NO; }
+    commitSampleEdit(_project, sampleIndex, std::move(edited), _undoHistory, _undoHistoryBytes, _redoHistory, _redoHistoryBytes);
     clearError(error);
     return YES;
 }
@@ -453,6 +577,54 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
 - (uint64_t)nearestZeroCrossingForSampleAtIndex:(NSUInteger)index frame:(uint64_t)frame radius:(uint64_t)radius {
     if (!validSampleIndex(_project, index)) return frame;
     return SampleEditor::nearestZeroCrossing(_project.samples[static_cast<std::size_t>(index)], frame, radius);
+}
+
+- (BOOL)canUndoSampleEdit {
+    return _undoHistory.empty() ? NO : YES;
+}
+
+- (BOOL)canRedoSampleEdit {
+    return _redoHistory.empty() ? NO : YES;
+}
+
+- (BOOL)undoSampleEdit:(NSString**)error {
+    if (_undoHistory.empty()) {
+        if (error != nullptr) *error = @"There is no sample edit to undo.";
+        return NO;
+    }
+    SampleHistoryEntry entry = std::move(_undoHistory.back());
+    _undoHistoryBytes -= entry.storageBytes;
+    _undoHistory.pop_back();
+    if (entry.sampleIndex >= _project.samples.size()) {
+        if (error != nullptr) *error = @"Undo history points to a sample that no longer exists.";
+        clearHistory(_undoHistory, _undoHistoryBytes);
+        clearHistory(_redoHistory, _redoHistoryBytes);
+        return NO;
+    }
+    pushHistory(_redoHistory, _redoHistoryBytes, entry.sampleIndex, _project.samples[entry.sampleIndex]);
+    _project.samples[entry.sampleIndex] = std::move(entry.sample);
+    clearError(error);
+    return YES;
+}
+
+- (BOOL)redoSampleEdit:(NSString**)error {
+    if (_redoHistory.empty()) {
+        if (error != nullptr) *error = @"There is no sample edit to redo.";
+        return NO;
+    }
+    SampleHistoryEntry entry = std::move(_redoHistory.back());
+    _redoHistoryBytes -= entry.storageBytes;
+    _redoHistory.pop_back();
+    if (entry.sampleIndex >= _project.samples.size()) {
+        if (error != nullptr) *error = @"Redo history points to a sample that no longer exists.";
+        clearHistory(_undoHistory, _undoHistoryBytes);
+        clearHistory(_redoHistory, _redoHistoryBytes);
+        return NO;
+    }
+    pushHistory(_undoHistory, _undoHistoryBytes, entry.sampleIndex, _project.samples[entry.sampleIndex]);
+    _project.samples[entry.sampleIndex] = std::move(entry.sample);
+    clearError(error);
+    return YES;
 }
 
 - (NSUInteger)multisampleCount {
@@ -487,9 +659,7 @@ bool validZoneIndex(const BankProject& project, NSUInteger multisampleIndex, NSU
     for (std::size_t zoneIndex = 0U; zoneIndex < multisample.zones.size(); ++zoneIndex) {
         const auto& zone = multisample.zones[zoneIndex];
         NSString* sampleName = @"Invalid sample";
-        if (zone.sampleIndex < _project.samples.size()) {
-            sampleName = nsString(_project.samples[zone.sampleIndex].name);
-        }
+        if (zone.sampleIndex < _project.samples.size()) sampleName = nsString(_project.samples[zone.sampleIndex].name);
         [rows addObject:@{
             @"zoneIndex": [NSNumber numberWithUnsignedLongLong:static_cast<unsigned long long>(zoneIndex)],
             @"sampleIndex": [NSNumber numberWithUnsignedInt:zone.sampleIndex],
