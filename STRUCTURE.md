@@ -56,9 +56,16 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - AIFF INST root key and valid forward sustain loop support.
 
 ### `tests/ManagerCoreTests.cpp`
-- Uses always-active `require()` checks, so Release/NDEBUG cannot silently remove test assertions.
-- Builds synthetic KSF/KMP/WAV/AIFF fixtures at runtime.
-- Tests Korg pan law, skipped KMP region handling, KSF format/loop behavior, WAV root/loop metadata, AIFF endian/rate/root handling, SHA-256, `.sv` build/read round-trip, exact audio recovery, dedup, invalid reference rejection, corruption rejection and atomic write/readback.
+- Always-active Release-safe regression checks.
+- Synthetic KSF/KMP/WAV/AIFF fixtures plus `.sv` integrity/dedup/round-trip tests.
+
+### `src/app/ManagerDocument.mm`
+- Real Manager project owner; no placeholder data.
+- Imports KMP, KSC, KSF, WAV, WAVE, AIF, AIFF and AIFC through the implemented core importers.
+- Imported KMP/KSC multisamples become real SOUND records with deterministic Bank/Page/Slot addresses.
+- Standalone KSF/WAV/AIFF imports become one-sample multisamples and SOUNDs.
+- Build action writes the real `SILVETON_BANK.sv` through `SvBankBuilder::writeAtomic` and returns real dedup/count statistics.
+- Provides actual SOUND rows/status counts for the AppKit GUI and a real clear-project operation.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -79,12 +86,12 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
 - Local full `.sv` build/read round-trip, exact audio recovery, dedup and corrupt-bank rejection PASS.
-- Release CMake build with `-Werror` builds the complete current core and `silveton_manager_tests` successfully.
-- `ctest`: 1/1 PASS.
-- Native AppKit application is not yet claimed buildable because its four CMake-referenced `.mm` source files are the next implementation block.
+- Release CMake build with `-Werror`: core + tests build successfully; `ctest` 1/1 PASS.
+- `ManagerDocument.mm` is committed but native AppKit application build is not yet claimed until the remaining window/app/main `.mm` files exist and an Intel macOS build runs.
 
 ## Next
-1. Implement native AppKit GUI with real Import and Build Bank actions.
-2. Build the Intel macOS application target.
-3. Replace the empty GitHub Actions workflow and run Intel macOS CI.
-4. Add batch workflow polish and tablet transfer.
+1. Implement native MainWindowController with only real Import/Clear/Build actions.
+2. Implement AppDelegate and main entry.
+3. Build the Intel macOS application target.
+4. Replace the empty GitHub Actions workflow and run Intel macOS CI.
+5. Add batch workflow polish and tablet transfer.
