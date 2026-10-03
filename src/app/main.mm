@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 
 @interface SVAppDelegate : NSObject <NSApplicationDelegate>
+- (void)newBankCommand:(id)sender;
 - (void)openBankCommand:(id)sender;
 - (void)saveBankCommand:(id)sender;
 - (void)saveBankAsCommand:(id)sender;
@@ -29,6 +30,12 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     [mainMenu addItem:fileItem];
     NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
     fileItem.submenu = fileMenu;
+
+    NSMenuItem* newItem = [[NSMenuItem alloc] initWithTitle:@"New SILVETON Bank"
+                                                    action:@selector(newBankCommand:)
+                                             keyEquivalent:@"n"];
+    newItem.target = delegate;
+    [fileMenu addItem:newItem];
 
     NSMenuItem* openItem = [[NSMenuItem alloc] initWithTitle:@"Open SILVETON Bank…"
                                                      action:@selector(openBankCommand:)
