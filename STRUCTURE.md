@@ -40,14 +40,19 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 
 ### `include/silveton/manager/SvBankBuilder.h`
 ### `src/core/SvBankBuilder.cpp`
-- Validates references, deduplicates strings/audio, aligns audio to 4096 bytes, computes SHA-256 and writes atomically.
+- Reference validation, string/audio dedup, 4096-byte audio alignment, SHA-256 and atomic writing.
 
 ### `include/silveton/manager/SvBankReader.h`
 ### `src/core/SvBankReader.cpp`
 - Bounds/integrity/reference validation and full project reconstruction from `.sv`.
 
 ### `include/silveton/manager/AudioFileLoader.h`
-- Declares offline WAV/AIFF/AIFC import to the same canonical sample representation used by KSF and `.sv`.
+### `src/core/AudioFileLoader.cpp`
+- WAV import: PCM16, PCM24 and IEEE float32, mono/stereo, exact canonical bytes.
+- Reads WAV `smpl` unity note and valid forward loop without inventing missing loops.
+- AIFF import: PCM16/PCM24 mono/stereo with big-endian -> canonical little-endian conversion.
+- AIFC supports uncompressed `NONE` and little-endian `sowt`; compressed codecs are rejected explicitly.
+- AIFF `INST` root key and forward sustain loop are read when valid MARK references exist.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -68,11 +73,10 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
 - Local full `.sv` build/read round-trip, exact audio recovery, dedup and corrupt-bank rejection PASS.
-- Audio loader implementation compiles locally with strict `-Werror`; implementation commit is next.
-- Repository-wide build is not yet claimed until the remaining files/tests/AppKit sources are committed and CI runs.
+- Audio loader implementation compiles locally with strict `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror`.
+- Repository-wide build is not yet claimed until regression tests and AppKit sources are committed and CI runs.
 
 ## Next
-1. Commit WAV/AIFF implementation.
-2. Regression tests + clean core build.
-3. Native AppKit GUI.
-4. Batch import, one-click bank build, tablet transfer.
+1. Commit regression tests and make core build cleanly.
+2. Native AppKit GUI with real Import/Build Bank actions.
+3. Batch import, one-click bank build, tablet transfer.
