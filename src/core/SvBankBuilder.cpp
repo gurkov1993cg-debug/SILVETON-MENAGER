@@ -4,8 +4,10 @@
 #include "silveton/manager/SvBankFormat.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdio>
 #include <cstdint>
-#include <filesystem>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -244,28 +246,30 @@ SvBuildResult SvBankBuilder::build(const BankProject& project) {
 bool SvBankBuilder::writeAtomic(const std::string& path, const BankProject& project, SvBuildStats& stats, std::string& error) {
     const auto built = build(project);
     if (!built.ok()) { error = built.error; return false; }
-    const std::filesystem::path target(path);
-    const std::filesystem::path temp = target.string() + ".tmp";
+
+    const std::string temp = path + ".tmp";
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) { error = "Cannot create temporary bank file: " + temp.string(); return false; }
+        if (!out) { error = "Cannot create temporary bank file: " + temp; return false; }
         out.write(reinterpret_cast<const char*>(built.bytes.data()), static_cast<std::streamsize>(built.bytes.size()));
         if (!out) { error = "Failed while writing temporary bank file"; return false; }
         out.flush();
         if (!out) { error = "Failed while flushing temporary bank file"; return false; }
     }
-    std::error_code ec;
-    std::filesystem::rename(temp, target, ec);
-    if (ec) {
-        std::filesystem::remove(target, ec);
-        ec.clear();
-        std::filesystem::rename(temp, target, ec);
-    }
-    if (ec) {
-        std::filesystem::remove(temp);
-        error = "Atomic bank replacement failed: " + ec.message();
+
+    if (std::rename(temp.c_str(), path.c_str()) != 0) {
+        const int firstError = errno;
+        if (std::remove(path.c_str()) == 0 && std::rename(temp.c_str(), path.c_str()) == 0) {
+            stats = built.stats;
+            error.clear();
+            return true;
+        }
+        const int finalError = errno != 0 ? errno : firstError;
+        (void)std::remove(temp.c_str());
+        error = "Atomic bank replacement failed: " + std::string(std::strerror(finalError));
         return false;
     }
+
     stats = built.stats;
     error.clear();
     return true;
