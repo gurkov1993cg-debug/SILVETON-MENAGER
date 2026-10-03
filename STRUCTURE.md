@@ -33,8 +33,8 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SampleEditor PCM mutation/no-auto-apply behavior, SHA-256, `.sv` round-trip/dedup/corruption/atomic write. Sample-editor coverage checks setLoop metadata without PCM mutation, explicit real loop-crossfade PCM mutation, fade in/out, trim, reverse, gain, normalize, root key, fine tune, zero crossing and waveform generation.
 
 ### Native AppKit application
-- `src/app/ManagerDocument.mm`: real imports, real status/list/clear, real atomic `.sv` build, and real selected-sample edit bridge. It exposes actual sample rows/state/waveform plus explicit user-triggered Trim, Set Loop, Apply Loop Crossfade, Reverse, Gain, Normalize, Fade In, Fade Out, Root Key, Fine Tune and Zero Crossing calls directly to `SampleEditor`. Import and Build never call these edit functions automatically. Old `std::filesystem` path usage was removed for macOS 10.13 compatibility.
-- `src/app/MainWindowController.mm`: real sample-editor GUI is wired. It shows the actual sample list, actual waveform min/max data, actual loop markers and numeric controls for Trim, Loop, Loop Crossfade, Fade In/Out, Gain, Normalize, Reverse, Root Key, Fine Tune and explicit Zero-Crossing Snap helpers. Every edit requires a user button press; no selection/import/build action applies DSP edits automatically. Unsigned frame/radius fields now use explicit validated parsing instead of unsupported `NSTextField.unsignedLongLongValue`; invalid or negative text is rejected with a warning instead of silently becoming zero.
+- `src/app/ManagerDocument.mm`: real imports, real status/list/clear, real atomic `.sv` build, real selected-sample edit bridge and real multisample/zone data bridge. Existing sample operations remain intact. The multisample bridge exposes actual multisample rows/state and actual zone records, supports multisample rename, zone add/remove, sample assignment and direct edits of Key Low/High, Velocity Low/High, Root Key, Transpose, Tune, Gain and Pan. Creating a multisample from selected samples sorts the real samples by Root Key, rejects duplicate Root Keys and creates contiguous key zones using midpoint boundaries between adjacent roots; those zone records are the same records serialized by `SvBankBuilder`. Import and Build never auto-apply sample DSP edits.
+- `src/app/MainWindowController.mm`: current checked-in GUI is still the sample-editor window only. It shows the actual sample list, actual waveform min/max data, actual loop markers and numeric controls for Trim, Loop, Loop Crossfade, Fade In/Out, Gain, Normalize, Reverse, Root Key, Fine Tune and explicit Zero-Crossing Snap helpers. At this exact revision there is still no visible multisample keyboard/zone editor; that absence must not be described as complete Manager GUI.
 - `src/app/AppDelegate.mm`: owns/shows the Manager window and application lifecycle.
 - `src/app/main.mm`: native NSApplication entry/event loop.
 
@@ -71,6 +71,22 @@ All destructive sample-edit operations are explicit user actions. Import and `.s
 
 Loop crossfade behavior is real: `applyLoopCrossfade()` linearly blends the selected loop tail with the selected loop head per channel and per sample, writes the overlap into the project-copy audio, advances loop start by the overlap length so the fade-in material is not replayed twice, and clears the pending crossfade metadata after the bake. This function is never called automatically.
 
+## Multisample editor scope
+The project model and ManagerDocument bridge now support real multisample zone editing:
+- actual sample assignment per zone;
+- Key Low / Key High;
+- Velocity Low / Velocity High;
+- Root Key;
+- Transpose;
+- Tune cents;
+- Gain dB;
+- Pan;
+- zone add/remove;
+- multisample rename;
+- automatic contiguous key mapping from selected samples using their actual Root Keys.
+
+The visible piano keyboard/key-zone GUI is not yet implemented in `MainWindowController.mm` at this revision. It must read/write these real zone records and must not be a decorative keyboard.
+
 Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portamento/TONE/FX.
 
 ## Verification status
@@ -95,9 +111,10 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - `CMakeLists.txt` commit `ab16701d4a9c6bbfdace99d1bf32d89a4fe45a43` enables `-fobjc-arc` only for `SILVETON_MANAGER`. No C++ core, sample-editor DSP/API, bank format or GUI control logic is changed. A new Intel CI run and another physical High Sierra open test are required before calling the GUI runtime proven.
 - `ManagerDocument.mm` sample-edit bridge commit `9c1be226146a8ac2125e822f728e93cf74c4d549` is present.
 - `MainWindowController.mm` real waveform/editor GUI wiring commit `5eecd85c88899a6c4463098369d315c5040fdc4a` is present.
+- `ManagerDocument.mm` commit `3c6418df8038055e8973e536280e76474a3ecf74` adds the real multisample/zone editing bridge described above. This commit is not yet a proven GUI feature and still requires Intel CI plus visible keyboard/zone wiring in `MainWindowController.mm`.
 
 ## Next
-1. Require the ARC-fix Intel run to pass compile/test/app/package checks.
-2. Install/open that exact artifact on the physical iMac 2011/macOS 10.13.6 and verify the window remains open and sample table renders without crash.
-3. Only after physical GUI launch success preserve the first proven sample-editor Manager baseline.
-4. Then add multisample keyboard/velocity-zone editor.
+1. Wire `MainWindowController.mm` to the real multisample/zone bridge: multisample list, zone list, 128-note key map/piano keyboard and editable zone parameters.
+2. Run the exact branch through Intel x86_64/macOS 10.13 CI and fix only real compile/test failures.
+3. Install/open the exact successful artifact on the physical iMac 2011/macOS 10.13.6 and verify the window, sample editor and multisample keyboard/zone editor remain usable without crash.
+4. Import the real KMP fixture and prove that the visible key map represents its real zones; edit a zone and verify the built `.sv` contains the changed zone values.
