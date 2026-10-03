@@ -30,7 +30,7 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `include/silveton/manager/SvBankBuilder.h`, `src/core/SvBankBuilder.cpp`: reference validation, string/audio dedup, 4096-byte audio alignment, integrity and atomic writing without `std::filesystem`.
 - `include/silveton/manager/SvBankReader.h`, `src/core/SvBankReader.cpp`: bounds/integrity/reference validation and complete project reconstruction.
 - `include/silveton/manager/AudioFileLoader.h`, `src/core/AudioFileLoader.cpp`: WAV PCM16/24/Float32, AIFF PCM16/24, AIFC NONE/sowt with supported root/loop metadata. Path identity, extension and stem handling now use macOS-10.13-compatible string/POSIX operations instead of `std::filesystem`.
-- `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SHA-256, `.sv` round-trip/dedup/corruption/atomic write. Test fixture path handling now uses macOS-10.13-compatible string/POSIX temp-directory operations instead of `std::filesystem`.
+- `tests/ManagerCoreTests.cpp`: always-active Release regression suite for KSF/KMP/WAV/AIFF, SampleEditor PCM mutation/no-auto-apply behavior, SHA-256, `.sv` round-trip/dedup/corruption/atomic write. Sample-editor coverage now checks setLoop metadata without PCM mutation, explicit real loop-crossfade PCM mutation, fade in/out, trim, reverse, gain, normalize, root key, fine tune, zero crossing and waveform generation.
 
 ### Native AppKit application
 - `src/app/ManagerDocument.mm`: real imports, real SOUND creation, real status/list/clear, real atomic `.sv` build.
@@ -69,7 +69,7 @@ Manager sample editing is the authoritative desktop editing layer for:
 
 All destructive sample-edit operations are explicit user actions. Import and `.sv` build do not auto-normalize, auto-trim, auto-fade, auto-crossfade, auto-reverse, auto-snap loop/start/end points or alter root/tune values without the user's command.
 
-Loop crossfade behavior is now real: `applyLoopCrossfade()` linearly blends the selected loop tail with the selected loop head per channel and per sample, writes the overlap into the project-copy audio, advances loop start by the overlap length so the fade-in material is not replayed twice, and clears the pending crossfade metadata after the bake. This function is never called automatically.
+Loop crossfade behavior is real: `applyLoopCrossfade()` linearly blends the selected loop tail with the selected loop head per channel and per sample, writes the overlap into the project-copy audio, advances loop start by the overlap length so the fade-in material is not replayed twice, and clears the pending crossfade metadata after the bake. This function is never called automatically.
 
 Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portamento/TONE/FX.
 
@@ -84,10 +84,10 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - Sample-editor implementation commit `f79a7e33bf1112585cd91a479b975050eda05801` is present but not yet claimed verified until regression tests run.
 - Real user-applied loop-crossfade implementation commit `eafe4a8776603103883e31a7f8fdfa482c91340f` is present but not yet claimed verified until regression tests run.
 - `SampleEditor.cpp` was added to the core build target in commit `2819851c494639ad3429e1761ec566caeb4b4a0e`; this integration is not claimed verified until the strict Intel build/tests complete.
+- Sample-editor regression coverage commit `099babef24741c2b34971eaaa698e4640a4745c5` is present and explicitly checks that editing is user-triggered and PCM changes are real; not yet claimed PASS until the Intel run completes.
 - No app-build success is claimed until a subsequent Intel run reaches compile/link/test/sign/package checks.
 
 ## Next
-1. Add regression coverage for every editor operation including real loop-crossfade audio mutation.
-2. Run the strict Intel/macOS 10.13 build and fix only real compiler/test failures.
-3. Wire verified sample editor core to the native waveform GUI with explicit Apply actions only.
-4. Add multisample keyboard/velocity-zone editor.
+1. Run the strict Intel/macOS 10.13 build and fix only real compiler/test failures.
+2. Wire verified sample editor core to the native waveform GUI with explicit Apply actions only.
+3. Add multisample keyboard/velocity-zone editor.
