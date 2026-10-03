@@ -1,5 +1,6 @@
 #include "silveton/manager/AudioFileLoader.h"
 #include "silveton/manager/KorgImporter.h"
+#include "silveton/manager/SampleEditor.h"
 #include "silveton/manager/SvBankBuilder.h"
 #include "silveton/manager/SvBankFormat.h"
 #include "silveton/manager/SvBankReader.h"
@@ -93,6 +94,15 @@ Bytes aiff(){
     Bytes out;out.insert(out.end(),{'F','O','R','M'});putBe32(out,static_cast<std::uint32_t>(body.size()));out.insert(out.end(),body.begin(),body.end());return out;
 }
 
+std::int16_t pcm16At(const silveton::manager::ImportedSample& sample, std::uint64_t frame, std::uint16_t channel = 0U) {
+    require(sample.encoding == silveton::manager::AudioEncoding::Pcm16LE, "pcm16At requires PCM16LE");
+    require(channel < sample.channels && frame < sample.totalFrames, "pcm16At index out of range");
+    const std::size_t offset = (static_cast<std::size_t>(frame) * static_cast<std::size_t>(sample.channels) + static_cast<std::size_t>(channel)) * 2U;
+    const std::uint16_t raw = static_cast<std::uint16_t>(sample.audioData[offset]) |
+                              static_cast<std::uint16_t>(static_cast<std::uint16_t>(sample.audioData[offset + 1U]) << 8U);
+    return static_cast<std::int16_t>(raw);
+}
+
 std::string digestHex(const std::array<std::uint8_t,32>& d){std::ostringstream os;for(auto b:d)os<<std::hex<<std::setw(2)<<std::setfill('0')<<static_cast<unsigned>(b);return os.str();}
 
 } // namespace
@@ -135,6 +145,68 @@ int main(){
     require(ar.ok(), "AIFF import");
     require(ar.sample.sampleRate==44100U&&ar.sample.rootKey==65U&&ar.sample.totalFrames==4U, "AIFF rate/root/frame count");
     require(ar.sample.audioData[0]==0x00U&&ar.sample.audioData[1]==0x80U, "AIFF big-endian to canonical little-endian");
+
+    std::string editError;
+    const Bytes originalWavAudio = wr.sample.audioData;
+
+    auto metadataOnly = wr.sample;
+    require(SampleEditor::setLoop(metadataOnly, true, 1U, 3U, 1U, editError), "set loop metadata");
+    require(metadataOnly.audioData == originalWavAudio, "setLoop must not modify PCM without explicit Apply");
+    require(metadataOnly.loop.crossfadeFrames == 1U, "setLoop crossfade metadata");
+
+    auto crossfaded = metadataOnly;
+    require(SampleEditor::applyLoopCrossfade(crossfaded, 1U, editError), "apply real loop crossfade");
+    require(crossfaded.audioData != originalWavAudio, "loop crossfade must mutate project-copy PCM");
+    require(pcm16At(crossfaded, 2U) == static_cast<std::int16_t>(-1), "loop crossfade must blend tail toward loop head");
+    require(crossfaded.loop.startFrame == 2U && crossfaded.loop.endFrame == 3U, "loop crossfade must advance loop start by overlap");
+    require(crossfaded.loop.crossfadeFrames == 0U, "applied loop crossfade must clear pending metadata");
+
+    auto noLoop = wr.sample;
+    noLoop.loop = {};
+    require(!SampleEditor::applyLoopCrossfade(noLoop, 1U, editError), "loop crossfade must reject disabled loop");
+    require(noLoop.audioData == originalWavAudio, "rejected loop crossfade must not alter PCM");
+
+    auto fadedIn = wr.sample;
+    require(SampleEditor::fadeIn(fadedIn, 2U, editError), "fade in");
+    require(pcm16At(fadedIn, 0U) == 0, "fade in must zero first frame");
+
+    auto fadedOut = wr.sample;
+    require(SampleEditor::fadeOut(fadedOut, 2U, editError), "fade out");
+    require(pcm16At(fadedOut, 3U) == 0, "fade out must zero last frame");
+
+    auto trimmed = wr.sample;
+    require(SampleEditor::trim(trimmed, 1U, 3U, editError), "trim sample");
+    require(trimmed.totalFrames == 2U && trimmed.audioData.size() == 4U, "trim must change real PCM length");
+    require(trimmed.loop.enabled && trimmed.loop.startFrame == 0U && trimmed.loop.endFrame == 2U, "trim must remap contained loop");
+
+    auto reversed = wr.sample;
+    require(SampleEditor::reverse(reversed, editError), "reverse sample");
+    require(pcm16At(reversed, 0U) == std::numeric_limits<std::int16_t>::max(), "reverse must reverse frame order");
+    require(reversed.loop.startFrame == 1U && reversed.loop.endFrame == 3U, "reverse must remap loop coordinates");
+
+    auto gained = wr.sample;
+    require(SampleEditor::applyGainDb(gained, -6.0F, editError), "gain edit");
+    require(std::abs(static_cast<int>(pcm16At(gained, 3U))) < std::abs(static_cast<int>(pcm16At(wr.sample, 3U))), "negative gain must reduce PCM magnitude");
+
+    auto normalized = gained;
+    require(SampleEditor::normalize(normalized, -3.0F, editError), "normalize edit");
+    const float normalizedPeak = SampleEditor::peakLinear(normalized);
+    require(normalizedPeak > 0.70F && normalizedPeak < 0.72F, "normalize must reach requested peak");
+
+    auto tuned = wr.sample;
+    require(SampleEditor::setRootKey(tuned, 72U, editError) && tuned.rootKey == 72U, "root key edit");
+    require(SampleEditor::setFineTuneCents(tuned, 17.5F, editError) && std::fabs(tuned.fineTuneCents - 17.5F) < 1e-6F, "fine tune edit");
+
+    const std::uint64_t zero = SampleEditor::nearestZeroCrossing(wr.sample, 2U, 2U);
+    require(zero >= 1U && zero <= 3U, "zero crossing search range");
+
+    std::vector<WaveformPoint> waveform;
+    require(SampleEditor::buildWaveform(wr.sample, 4U, waveform, editError), "waveform generation");
+    require(waveform.size() == 4U, "waveform point count");
+    require(waveform.front().minimum <= -0.99F, "waveform must reflect real sample minimum");
+    require(waveform.back().maximum >= 0.99F, "waveform must reflect real sample maximum");
+
+    require(wr.sample.audioData == originalWavAudio, "editor tests must not mutate imported source object implicitly");
 
     const char* abc="abc";
     require(digestHex(sha256(reinterpret_cast<const std::uint8_t*>(abc),3U))=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 standard vector");
