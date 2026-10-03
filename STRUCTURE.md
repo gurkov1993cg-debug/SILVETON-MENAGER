@@ -31,6 +31,13 @@ The Android tablet remains the live-performance runtime and must not rebuild KMP
 - Declares the Manager core regression-test target.
 - Enables strict compiler warnings for the core and tests.
 
+### `include/silveton/manager/ManagerTypes.h`
+- Defines the Manager-side import and bank model.
+- Defines canonical bank audio encodings: PCM16LE, PCM24LE and Float32LE.
+- Defines sample metadata, loop metadata, multisample zones, SOUND layers and bank/page/slot addresses.
+- Preserves raw Korg RLP1 pan/level/filter source values instead of replacing them with undocumented conversions.
+- Keeps canonical audio bytes separate from source-path metadata so later `.sv` building can deduplicate payloads safely.
+
 ## Planned source layout already reserved by CMake
 
 ### Core
@@ -59,6 +66,16 @@ The Manager will reuse only proven sampler-side parsing/loading concepts that ar
 
 The Manager will not copy Android runtime, Direct-ALSA, Direct-MIDI, COMBI GUI, or realtime tablet code.
 
+## Real Korg regression fixture
+User-provided `SALEAS-GRK SH.kmp` plus `MS000000.KSF` ... `MS000012.KSF` is the first real import fixture.
+Verified facts from the fixture:
+- 14 KMP RLP1 regions total.
+- Region 0 is `SKIPPEDSAMPL` and covers MIDI keys 0..1.
+- 13 external KSF samples remain and produce 13 playable zones.
+- Samples are 48 kHz, 16-bit, mono PCM.
+- The first real zone uses C4/root 60 and covers keys 2..61.
+- All playable regions carry raw pan value 64; this raw value is preserved exactly in Manager metadata.
+
 ## SILVETON_BANK.sv contract direction
 The final Manager output remains one master bank file rather than one file per SOUND.
 
@@ -78,14 +95,16 @@ Exact binary structures are not yet claimed as finalized until the format implem
 - Repository inspected: it initially contained only `.github/workflows/SILVETON MENAGER.yml`, which was effectively empty.
 - Development branch created successfully.
 - Root CMake baseline committed.
-- No successful Manager build is claimed yet because the source files referenced by the new CMake target are the next implementation work.
+- `ManagerTypes.h` committed.
+- The Manager core has not yet completed a repository-wide build because the remaining CMake-referenced sources are still being implemented.
 
 ## Next implementation order
-1. Define the stable `.sv` binary types and format contract.
-2. Add deterministic sample hashing/dedup identity.
-3. Port/adapt audio loading and Korg KMP/KSF/KSC parsing from the sampler donor source.
-4. Implement bank builder and bank reader with integrity/offset validation.
-5. Add regression tests for exact round-trip, corrupt-bank rejection, duplicate-sample elimination, ranges and metadata.
-6. Build the native AppKit Manager GUI around the proven core.
-7. Add batch import and one-click `SILVETON_BANK.sv` build workflow.
-8. Add transfer workflow to the tablet after the bank format is proven.
+1. Implement and lock real KSF/KMP/KSC import against the SALEAS-GRK fixture.
+2. Define the stable `.sv` binary types and format contract.
+3. Add deterministic sample hashing/dedup identity.
+4. Adapt WAV/AIFF import.
+5. Implement bank builder and bank reader with integrity/offset validation.
+6. Add regression tests for exact round-trip, corrupt-bank rejection, duplicate-sample elimination, ranges and metadata.
+7. Build the native AppKit Manager GUI around the proven core.
+8. Add batch import and one-click `SILVETON_BANK.sv` build workflow.
+9. Add transfer workflow to the tablet after the bank format is proven.
