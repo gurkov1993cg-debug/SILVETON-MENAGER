@@ -1,4 +1,5 @@
 #import <AppKit/AppKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
 namespace {
@@ -19,10 +20,6 @@ NSColor* SVFieldColor() {
 
 NSColor* SVPrimaryTextColor() {
     return [NSColor colorWithCalibratedWhite:0.92 alpha:1.0];
-}
-
-NSColor* SVSecondaryTextColor() {
-    return [NSColor colorWithCalibratedWhite:0.66 alpha:1.0];
 }
 
 NSColor* SVAccentColor() {
@@ -138,10 +135,7 @@ void SVApplyWindowTheme(NSWindow* window) {
     window.titlebarAppearsTransparent = NO;
     window.movableByWindowBackground = NO;
     window.releasedWhenClosed = NO;
-
-    if ([window.title hasPrefix:@"SILVETON"] || [window.title containsString:@"SILVETON"]) {
-        window.titleVisibility = NSWindowTitleVisible;
-    }
+    window.titleVisibility = NSWindowTitleVisible;
 
     if (window.contentView != nil) {
         window.contentView.wantsLayer = YES;
