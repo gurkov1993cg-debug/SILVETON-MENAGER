@@ -13,6 +13,8 @@
 - (void)showObjectManagerCommand:(id)sender;
 - (void)showConverterCommand:(id)sender;
 - (void)showWorkflowCommand:(id)sender;
+- (void)undoSampleEdit:(id)sender;
+- (void)redoSampleEdit:(id)sender;
 @end
 
 namespace {
@@ -61,8 +63,8 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     AddMenuCommand(fileMenu, @"MEDIA Browser…", @selector(showMediaCommand:), @"M", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
 
     NSMenu* editMenu = AddTopLevelMenu(mainMenu, @"Edit");
-    AddMenuCommand(editMenu, @"Undo", @selector(undo:), @"z", NSEventModifierFlagCommand, nil);
-    AddMenuCommand(editMenu, @"Redo", @selector(redo:), @"Z", NSEventModifierFlagCommand | NSEventModifierFlagShift, nil);
+    AddMenuCommand(editMenu, @"Undo Sample Edit", @selector(undoSampleEdit:), @"z", NSEventModifierFlagCommand, delegate);
+    AddMenuCommand(editMenu, @"Redo Sample Edit", @selector(redoSampleEdit:), @"Z", NSEventModifierFlagCommand | NSEventModifierFlagShift, delegate);
     [editMenu addItem:[NSMenuItem separatorItem]];
     AddMenuCommand(editMenu, @"Cut", @selector(cut:), @"x", NSEventModifierFlagCommand, nil);
     AddMenuCommand(editMenu, @"Copy", @selector(copy:), @"c", NSEventModifierFlagCommand, nil);
@@ -90,6 +92,7 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     app.windowsMenu = windowMenu;
 
     NSMenu* helpMenu = AddTopLevelMenu(mainMenu, @"Help");
+    AddMenuCommand(helpMenu, @"SILVETON Workflow Help", @selector(showWorkflowCommand:), @"?", NSEventModifierFlagCommand, delegate);
     app.helpMenu = helpMenu;
 }
 
