@@ -24,27 +24,30 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - Intel/macOS baseline, core library, AppKit target and tests.
 
 ### `include/silveton/manager/ManagerTypes.h`
-- Canonical Manager sample/multisample/SOUND data model and preserved raw Korg source metadata.
+- Canonical Manager sample/multisample/SOUND model with preserved raw Korg source metadata.
 
 ### `include/silveton/manager/KorgImporter.h`
 ### `src/core/KorgImporter.cpp`
-- KSF/KMP/KSC parser with canonical PCM16LE output, exact zones and dependency loading.
+- KSF/KMP/KSC parsing, canonical PCM16LE output, exact zones and dependency loading.
 
 ### `include/silveton/manager/SampleHash.h`
 ### `src/core/SampleHash.cpp`
-- Deterministic sample-audio hash; exact byte equality remains required for dedup.
+- Deterministic sample-audio hash; exact byte equality remains mandatory for dedup.
 
 ### `include/silveton/manager/SvBankFormat.h`
 ### `src/core/SvBankFormat.cpp`
-- `.sv` v1 fixed header/records, explicit little-endian serialization and internal SHA-256.
+- `.sv` v1 fixed header/records, explicit little-endian serialization and SHA-256.
 
 ### `include/silveton/manager/SvBankBuilder.h`
 ### `src/core/SvBankBuilder.cpp`
-- Project validation, deduplicated strings/audio, 4096-byte audio alignment, payload SHA-256, atomic output and build statistics.
+- Validates references, deduplicates strings/audio, aligns audio to 4096 bytes, computes payload SHA-256 and writes atomically.
 
 ### `include/silveton/manager/SvBankReader.h`
-- Declares full in-memory/file `.sv` reading with optional SHA-256 verification.
-- Returns both reconstructed Manager project data and the parsed v1 header.
+### `src/core/SvBankReader.cpp`
+- Validates magic/version/file size, every section boundary and fixed record-section size.
+- Optionally verifies SHA-256 before trusting payload data.
+- Rejects invalid sample audio ranges, invalid string offsets, invalid zone/sample references and invalid SOUND/multisample ranges.
+- Reconstructs Manager sample, multisample and SOUND data with exact audio bytes.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -64,14 +67,14 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Development branch exists; `main` untouched.
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
-- Local builder/reader round-trip PASS using SALEAS data.
-- Dedup test PASS: 14 sample records can share 13 physical audio payloads.
-- Corrupted payload is rejected locally by SHA-256 verification.
-- Repository-wide build is not yet claimed until reader implementation, audio loader, tests and remaining CMake sources are committed.
+- Local full `.sv` build -> read round-trip PASS using SALEAS data.
+- Exact audio recovery PASS.
+- Dedup PASS: 14 sample records -> 13 physical audio payloads when one sample is duplicated.
+- Corrupted payload rejection PASS via SHA-256.
+- Repository-wide build is not yet claimed until WAV/AIFF loader, tests and AppKit sources are committed and CI runs.
 
 ## Next
-1. Commit bank reader implementation.
-2. WAV/AIFF importer.
-3. Regression tests + clean core build.
-4. Native AppKit GUI.
-5. Batch import, one-click bank build, tablet transfer.
+1. WAV/AIFF importer.
+2. Regression tests + clean core build.
+3. Native AppKit GUI.
+4. Batch import, one-click bank build, tablet transfer.
