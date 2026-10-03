@@ -54,6 +54,7 @@ if(APPLE)
     add_executable(SILVETON_MANAGER MACOSX_BUNDLE
         src/app/main.mm
         src/app/AppDelegate.mm
+        src/app/AppUnsavedChanges.mm
         src/app/BankFileCommands.mm
         src/app/ConverterController.mm
         src/app/MediaController.mm
@@ -67,6 +68,7 @@ if(APPLE)
         src/app/ManagerDocument.mm
         src/app/ManagerDocumentBankIO.mm
         src/app/ManagerDocumentConverter.mm
+        src/app/ManagerDocumentDirty.mm
         src/app/ManagerDocumentObjects.mm
     )
 
@@ -198,6 +200,19 @@ if(SILVETON_MANAGER_BUILD_TESTS)
         target_compile_options(silveton_manager_bank_io_tests PRIVATE -fobjc-arc)
         add_test(NAME silveton_manager_bank_io COMMAND silveton_manager_bank_io_tests)
         list(APPEND SILVETON_MANAGER_TEST_TARGETS silveton_manager_bank_io_tests)
+
+        add_executable(silveton_manager_dirty_tests
+            tests/ManagerDocumentDirtyTests.mm
+            src/app/ManagerDocument.mm
+            src/app/ManagerDocumentDirty.mm
+        )
+        target_link_libraries(silveton_manager_dirty_tests PRIVATE
+            silveton_manager_core
+            "-framework Foundation"
+        )
+        target_compile_options(silveton_manager_dirty_tests PRIVATE -fobjc-arc)
+        add_test(NAME silveton_manager_dirty COMMAND silveton_manager_dirty_tests)
+        list(APPEND SILVETON_MANAGER_TEST_TARGETS silveton_manager_dirty_tests)
     endif()
 
     add_custom_target(silveton_manager_check
