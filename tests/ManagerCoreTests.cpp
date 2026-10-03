@@ -7,14 +7,16 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -41,11 +43,23 @@ void require(bool condition, const std::string& message) {
     if (!condition) fail(message);
 }
 
-void writeFile(const std::filesystem::path& p,const Bytes& b){
+std::string joinPath(const std::string& base, const std::string& leaf) {
+    if (base.empty()) return leaf;
+    if (base.back() == '/') return base + leaf;
+    return base + "/" + leaf;
+}
+
+std::string testRoot() {
+    const char* tmp = std::getenv("TMPDIR");
+    const std::string base = (tmp != nullptr && tmp[0] != '\0') ? std::string(tmp) : std::string("/tmp");
+    return joinPath(base, "silveton_manager_tests_" + std::to_string(static_cast<long long>(::getpid())));
+}
+
+void writeFile(const std::string& p,const Bytes& b){
     std::ofstream f(p,std::ios::binary);
-    require(static_cast<bool>(f), "cannot create fixture file " + p.string());
+    require(static_cast<bool>(f), "cannot create fixture file " + p);
     f.write(reinterpret_cast<const char*>(b.data()),static_cast<std::streamsize>(b.size()));
-    require(f.good(), "cannot write fixture file " + p.string());
+    require(f.good(), "cannot write fixture file " + p);
 }
 
 Bytes ksf(const std::string& name, const std::array<std::int16_t,4>& pcm){
@@ -84,18 +98,25 @@ std::string digestHex(const std::array<std::uint8_t,32>& d){std::ostringstream o
 } // namespace
 
 int main(){
-    namespace fs=std::filesystem;
     using namespace silveton::manager;
-    const fs::path root=fs::temp_directory_path()/"silveton_manager_tests";fs::remove_all(root);fs::create_directories(root);
+    const std::string root=testRoot();
+    require(::mkdir(root.c_str(),0700)==0,"cannot create test directory " + root);
+
+    const std::string ksfA=joinPath(root,"A.KSF");
+    const std::string ksfB=joinPath(root,"B.KSF");
+    const std::string kmpPath=joinPath(root,"FIXTURE.KMP");
+    const std::string wavPath=joinPath(root,"fixture.wav");
+    const std::string aiffPath=joinPath(root,"fixture.aiff");
+    const std::string bank=joinPath(root,"SILVETON_BANK.sv");
 
     require(std::fabs(KorgImporter::normalizedPan(0U)+1.0F)<1e-6F, "pan raw 0 must map left");
     require(std::fabs(KorgImporter::normalizedPan(64U))<1e-6F, "pan raw 64 must map centre");
     require(std::fabs(KorgImporter::normalizedPan(127U)-1.0F)<1e-6F, "pan raw 127 must map right");
 
-    writeFile(root/"A.KSF",ksf("C4",{{-32768,-100,100,32767}}));
-    writeFile(root/"B.KSF",ksf("E4",{{-20000,-10,10,20000}}));
-    writeFile(root/"FIXTURE.KMP",kmp());
-    auto kr=KorgImporter::loadKmp((root/"FIXTURE.KMP").string());
+    writeFile(ksfA,ksf("C4",{{-32768,-100,100,32767}}));
+    writeFile(ksfB,ksf("E4",{{-20000,-10,10,20000}}));
+    writeFile(kmpPath,kmp());
+    auto kr=KorgImporter::loadKmp(kmpPath);
     require(kr.ok(), "synthetic KMP import");
     require(kr.samples.size()==2U, "KMP sample count");
     require(kr.multisample.zones.size()==2U, "KMP zone count");
@@ -104,13 +125,13 @@ int main(){
     require(kr.multisample.zones[0].sourcePanRaw==64U&&std::fabs(kr.multisample.zones[0].pan)<1e-6F, "KMP raw pan preservation");
     require(kr.samples[0].sampleRate==48000U&&kr.samples[0].channels==1U&&!kr.samples[0].loop.enabled, "KSF format/no fake loop");
 
-    writeFile(root/"fixture.wav",wav());
-    auto wr=AudioFileLoader::load((root/"fixture.wav").string());
+    writeFile(wavPath,wav());
+    auto wr=AudioFileLoader::load(wavPath);
     require(wr.ok(), "WAV import");
     require(wr.sample.rootKey==64U&&wr.sample.loop.enabled&&wr.sample.loop.startFrame==1U&&wr.sample.loop.endFrame==3U&&wr.sample.totalFrames==4U, "WAV smpl root/loop");
 
-    writeFile(root/"fixture.aiff",aiff());
-    auto ar=AudioFileLoader::load((root/"fixture.aiff").string());
+    writeFile(aiffPath,aiff());
+    auto ar=AudioFileLoader::load(aiffPath);
     require(ar.ok(), "AIFF import");
     require(ar.sample.sampleRate==44100U&&ar.sample.rootKey==65U&&ar.sample.totalFrames==4U, "AIFF rate/root/frame count");
     require(ar.sample.audioData[0]==0x00U&&ar.sample.audioData[1]==0x80U, "AIFF big-endian to canonical little-endian");
@@ -139,13 +160,19 @@ int main(){
     BankProject invalid=project;invalid.multisamples[0].zones[0].sampleIndex=999U;
     require(!SvBankBuilder::build(invalid).ok(), "SV invalid reference rejection");
 
-    SvBuildStats stats{};std::string error;const fs::path bank=root/"SILVETON_BANK.sv";
-    require(SvBankBuilder::writeAtomic(bank.string(),project,stats,error), "SV atomic write");
+    SvBuildStats stats{};std::string error;
+    require(SvBankBuilder::writeAtomic(bank,project,stats,error), "SV atomic write");
     require(error.empty(), "SV atomic write error state");
     require(stats.uniqueAudioPayloadCount==2U, "SV atomic write stats");
-    require(SvBankReader::readFile(bank.string(),true).ok(), "SV written bank readback");
+    require(SvBankReader::readFile(bank,true).ok(), "SV written bank readback");
 
-    fs::remove_all(root);
+    std::remove(ksfA.c_str());
+    std::remove(ksfB.c_str());
+    std::remove(kmpPath.c_str());
+    std::remove(wavPath.c_str());
+    std::remove(aiffPath.c_str());
+    std::remove(bank.c_str());
+    ::rmdir(root.c_str());
     std::cout<<"SILVETON Manager core tests PASS\n";
     return 0;
 }
