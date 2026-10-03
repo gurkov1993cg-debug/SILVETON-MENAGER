@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <limits.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -31,16 +33,31 @@ bool readAll(const std::string& path, std::vector<std::uint8_t>& bytes, std::str
     return true;
 }
 
-std::string identity(const std::filesystem::path& path) {
-    std::error_code ec;
-    const auto canonical = std::filesystem::weakly_canonical(path, ec);
-    return (ec ? path.lexically_normal() : canonical).generic_string();
+std::string identity(const std::string& path) {
+    char resolved[PATH_MAX]{};
+    if (::realpath(path.c_str(), resolved) != nullptr) return std::string(resolved);
+    return path;
 }
 
-std::string extensionLower(std::filesystem::path path) {
-    std::string ext = path.extension().string();
+std::size_t filenameStart(const std::string& path) noexcept {
+    const std::size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? 0U : slash + 1U;
+}
+
+std::string extensionLower(const std::string& path) {
+    const std::size_t start = filenameStart(path);
+    const std::size_t dot = path.find_last_of('.');
+    std::string ext;
+    if (dot != std::string::npos && dot >= start) ext = path.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     return ext;
+}
+
+std::string stemName(const std::string& path) {
+    const std::size_t start = filenameStart(path);
+    const std::size_t dot = path.find_last_of('.');
+    if (dot == std::string::npos || dot < start) return path.substr(start);
+    return path.substr(start, dot - start);
 }
 
 double extended80(const std::uint8_t* p) noexcept {
@@ -100,7 +117,7 @@ AudioLoadResult AudioFileLoader::loadWav(const std::string& path) {
     if (blockAlign != expectedAlign || blockAlign == 0U || dataSize % blockAlign != 0U) return {{}, "Invalid WAV block alignment/data size"};
 
     ImportedSample out{};
-    out.name=std::filesystem::path(path).stem().string(); out.sourcePath=path; out.sourceIdentity=identity(path);
+    out.name=stemName(path); out.sourcePath=path; out.sourceIdentity=identity(path);
     out.sampleRate=sampleRate; out.channels=channels; out.encoding=encoding; out.bitsPerSample=static_cast<std::uint8_t>(bits);
     out.totalFrames=static_cast<std::uint64_t>(dataSize/blockAlign); out.audioData.assign(data,data+dataSize);
     if (smpl != nullptr && smplSize >= 36U) {
@@ -155,7 +172,7 @@ AudioLoadResult AudioFileLoader::loadAiff(const std::string& path) {
     if(pcmStart>ssndSize)return {{} ,"Invalid AIFF SSND offset"};
     const std::uint32_t bps=bits/8U; const std::uint64_t expected=static_cast<std::uint64_t>(frames)*channels*bps;
     if(expected>ssndSize-pcmStart)return {{} ,"AIFF SSND payload is truncated"};
-    ImportedSample out{}; out.name=std::filesystem::path(path).stem().string(); out.sourcePath=path; out.sourceIdentity=identity(path);
+    ImportedSample out{}; out.name=stemName(path); out.sourcePath=path; out.sourceIdentity=identity(path);
     out.sampleRate=sampleRate; out.channels=channels; out.bitsPerSample=static_cast<std::uint8_t>(bits); out.encoding=bits==16U?AudioEncoding::Pcm16LE:AudioEncoding::Pcm24LE; out.totalFrames=frames;
     const std::uint8_t* source=ssnd+pcmStart; out.audioData.resize(static_cast<std::size_t>(expected));
     if(sourceLittleEndian)std::copy(source,source+expected,out.audioData.begin());
