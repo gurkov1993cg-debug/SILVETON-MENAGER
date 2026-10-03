@@ -40,12 +40,11 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 
 ### `include/silveton/manager/SvBankBuilder.h`
 ### `src/core/SvBankBuilder.cpp`
-- Validates all sample, zone and SOUND references before writing.
-- Builds deduplicated string and audio payloads.
-- Audio dedup uses hash buckets plus exact format and byte equality, so a hash collision cannot merge different audio.
-- Generates fixed metadata sections and 4096-byte-aligned audio payload for random access/streaming.
-- Computes SHA-256 over all payload bytes and writes the final header last.
-- Provides atomic `.tmp` -> target replacement and build statistics.
+- Project validation, deduplicated strings/audio, 4096-byte audio alignment, payload SHA-256, atomic output and build statistics.
+
+### `include/silveton/manager/SvBankReader.h`
+- Declares full in-memory/file `.sv` reading with optional SHA-256 verification.
+- Returns both reconstructed Manager project data and the parsed v1 header.
 
 ## Real Korg regression fixture
 User-provided `SALEAS-GRK SH.kmp` + 13 KSF files.
@@ -66,11 +65,12 @@ Verified: 14 RLP1 regions; first is `SKIPPEDSAMPL` keys 0..1; 13 playable zones;
 - Strict local SALEAS import smoke test PASS.
 - SHA-256 standard `abc` vector PASS.
 - Local builder/reader round-trip PASS using SALEAS data.
-- Dedup test PASS: an added duplicate sample produces 14 sample records but only 13 physical audio payloads.
-- Repository-wide build is not yet claimed until reader, audio loader, tests and remaining CMake sources are committed.
+- Dedup test PASS: 14 sample records can share 13 physical audio payloads.
+- Corrupted payload is rejected locally by SHA-256 verification.
+- Repository-wide build is not yet claimed until reader implementation, audio loader, tests and remaining CMake sources are committed.
 
 ## Next
-1. Commit bank reader contract/implementation.
+1. Commit bank reader implementation.
 2. WAV/AIFF importer.
 3. Regression tests + clean core build.
 4. Native AppKit GUI.
