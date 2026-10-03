@@ -14,6 +14,17 @@ struct WaveformPoint {
     float maximum{0.0F};
 };
 
+struct SampleRegion {
+    std::uint32_t sampleRate{0U};
+    std::uint16_t channels{0U};
+    AudioEncoding encoding{AudioEncoding::Pcm16LE};
+    std::uint8_t bitsPerSample{0U};
+    std::uint64_t frameCount{0U};
+    std::vector<std::uint8_t> audioData;
+
+    [[nodiscard]] bool empty() const noexcept { return frameCount == 0U || audioData.empty(); }
+};
+
 class SampleEditor final {
 public:
     static bool trim(ImportedSample& sample,
@@ -49,6 +60,54 @@ public:
     static bool fadeOut(ImportedSample& sample,
                         std::uint64_t fadeFrames,
                         std::string& error);
+
+    static bool copyRegion(const ImportedSample& sample,
+                           std::uint64_t startFrame,
+                           std::uint64_t endFrame,
+                           SampleRegion& region,
+                           std::string& error);
+
+    static bool deleteRegion(ImportedSample& sample,
+                             std::uint64_t startFrame,
+                             std::uint64_t endFrame,
+                             std::string& error);
+
+    static bool silenceRegion(ImportedSample& sample,
+                              std::uint64_t startFrame,
+                              std::uint64_t endFrame,
+                              std::string& error);
+
+    static bool insertRegion(ImportedSample& sample,
+                             std::uint64_t atFrame,
+                             const SampleRegion& region,
+                             std::string& error);
+
+    static bool reverseRegion(ImportedSample& sample,
+                              std::uint64_t startFrame,
+                              std::uint64_t endFrame,
+                              std::string& error);
+
+    static bool applyGainDbRegion(ImportedSample& sample,
+                                  std::uint64_t startFrame,
+                                  std::uint64_t endFrame,
+                                  float gainDb,
+                                  std::string& error);
+
+    static bool normalizeRegion(ImportedSample& sample,
+                                std::uint64_t startFrame,
+                                std::uint64_t endFrame,
+                                float targetPeakDb,
+                                std::string& error);
+
+    static bool fadeInRegion(ImportedSample& sample,
+                             std::uint64_t startFrame,
+                             std::uint64_t endFrame,
+                             std::string& error);
+
+    static bool fadeOutRegion(ImportedSample& sample,
+                              std::uint64_t startFrame,
+                              std::uint64_t endFrame,
+                              std::string& error);
 
     static bool setRootKey(ImportedSample& sample,
                            std::uint8_t rootKey,
