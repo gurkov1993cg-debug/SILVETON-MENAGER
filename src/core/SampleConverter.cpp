@@ -238,6 +238,16 @@ bool SampleConverter::convert(const ImportedSample& source,
         return false;
     }
 
+    // A true no-op must stay bit perfect. In particular, enabling dither must
+    // never alter audio when sample rate, channel count and encoding are kept.
+    if (targetRate == source.sampleRate &&
+        targetChannels == source.channels &&
+        targetEncoding == source.encoding) {
+        destination = source;
+        error.clear();
+        return true;
+    }
+
     const long double exactFrames = static_cast<long double>(source.totalFrames) *
                                     static_cast<long double>(targetRate) /
                                     static_cast<long double>(source.sampleRate);
