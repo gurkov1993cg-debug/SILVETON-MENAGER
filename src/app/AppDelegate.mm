@@ -42,6 +42,11 @@
 - (void)refreshFromDocument;
 @end
 
+@interface SVSoundEditorWindowController : NSWindowController
+- (instancetype)initWithDocumentModel:(SVManagerDocument*)documentModel;
+- (void)refreshFromDocument;
+@end
+
 @interface SVAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
@@ -49,6 +54,7 @@
     SVMainWindowController* _mainWindowController;
     SVMultisampleWindowController* _multisampleWindowController;
     SVBankOrganizerWindowController* _bankOrganizerWindowController;
+    SVSoundEditorWindowController* _soundEditorWindowController;
     SVSampleAuditionPlayer* _auditionPlayer;
 }
 
@@ -92,6 +98,7 @@
     [_mainWindowController refreshProjectView];
     [_multisampleWindowController refreshFromDocument];
     [_bankOrganizerWindowController refreshFromDocument];
+    [_soundEditorWindowController refreshFromDocument];
 }
 
 - (BOOL)parseUnsignedField:(NSTextField*)field label:(NSString*)label value:(uint64_t*)valueOut {
@@ -175,11 +182,15 @@
     [content addSubview:[self toolbarButtonWithFrame:NSMakeRect(558.0, 696.0, 74.0, 32.0) title:@"Undo" action:@selector(undoSampleEdit:)]];
     [content addSubview:[self toolbarButtonWithFrame:NSMakeRect(640.0, 696.0, 74.0, 32.0) title:@"Redo" action:@selector(redoSampleEdit:)]];
 
-    NSButton* bankButton = [self toolbarButtonWithFrame:NSMakeRect(720.0, 696.0, 112.0, 32.0) title:@"Bank Organizer…" action:@selector(showBankOrganizer:)];
+    NSButton* bankButton = [self toolbarButtonWithFrame:NSMakeRect(720.0, 696.0, 78.0, 32.0) title:@"Bank…" action:@selector(showBankOrganizer:)];
     bankButton.autoresizingMask = NSViewMinYMargin;
     [content addSubview:bankButton];
 
-    NSButton* multisampleButton = [self toolbarButtonWithFrame:NSMakeRect(840.0, 696.0, 182.0, 32.0) title:@"Multisample Editor…" action:@selector(showMultisampleEditor:)];
+    NSButton* soundButton = [self toolbarButtonWithFrame:NSMakeRect(802.0, 696.0, 96.0, 32.0) title:@"SOUND…" action:@selector(showSoundEditor:)];
+    soundButton.autoresizingMask = NSViewMinYMargin;
+    [content addSubview:soundButton];
+
+    NSButton* multisampleButton = [self toolbarButtonWithFrame:NSMakeRect(902.0, 696.0, 126.0, 32.0) title:@"Multisample…" action:@selector(showMultisampleEditor:)];
     multisampleButton.autoresizingMask = NSViewMinXMargin | NSViewMinYMargin;
     [content addSubview:multisampleButton];
 
@@ -270,89 +281,135 @@
 - (void)stopAudition:(id)sender { (void)sender; [_auditionPlayer stop]; }
 
 - (void)copyRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
     NSString* error = nil;
     if (![[self documentModel] copySampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error]) {
-        [self showMessage:@"Copy Range" text:error style:NSAlertStyleWarning]; return;
+        [self showMessage:@"Copy Range" text:error style:NSAlertStyleWarning];
+        return;
     }
     NSTextField* status = [_mainWindowController valueForKey:@"statusLabel"];
     if (status != nil) status.stringValue = [[self documentModel] sampleClipboardSummary];
 }
 
 - (void)cutRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] cutSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] cutSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Cut Range"];
 }
 
 - (void)pasteRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
     (void)endFrame;
-    NSString* error = nil; BOOL ok = [[self documentModel] pasteSampleRangeAtIndex:index atFrame:startFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] pasteSampleRangeAtIndex:index atFrame:startFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Paste Range"];
 }
 
 - (void)deleteRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] deleteSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] deleteSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Delete Range"];
 }
 
 - (void)silenceRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] silenceSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] silenceSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Silence Range"];
 }
 
 - (void)reverseRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] reverseSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] reverseSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Reverse Range"];
 }
 
 - (void)fadeInRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] fadeInSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] fadeInSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Fade In Range"];
 }
 
 - (void)fadeOutRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U;
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
     if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] fadeOutSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] fadeOutSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishRangeMutation:ok error:error title:@"Fade Out Range"];
 }
 
 - (void)gainRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U; float gainDb = 0.0F;
-    if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame] || ![self readFloatFieldKey:@"gainField" label:@"Gain dB" value:&gainDb]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] applyGainForSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame gainDb:gainDb error:&error];
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
+    float gainDb = 0.0F;
+    if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame] ||
+        ![self readFloatFieldKey:@"gainField" label:@"Gain dB" value:&gainDb]) return;
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] applyGainForSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame gainDb:gainDb error:&error];
     [self finishRangeMutation:ok error:error title:@"Gain Range"];
 }
 
 - (void)normalizeRange:(id)sender {
-    (void)sender; NSUInteger index = 0U; uint64_t startFrame = 0U, endFrame = 0U; float targetDb = 0.0F;
-    if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame] || ![self readFloatFieldKey:@"normalizeField" label:@"Normalize dBFS" value:&targetDb]) return;
-    NSString* error = nil; BOOL ok = [[self documentModel] normalizeSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame targetPeakDb:targetDb error:&error];
+    (void)sender;
+    NSUInteger index = 0U;
+    uint64_t startFrame = 0U, endFrame = 0U;
+    float targetDb = 0.0F;
+    if (![self selectedSampleIndex:&index] || ![self readEditRangeStart:&startFrame end:&endFrame] ||
+        ![self readFloatFieldKey:@"normalizeField" label:@"Normalize dBFS" value:&targetDb]) return;
+    NSString* error = nil;
+    BOOL ok = [[self documentModel] normalizeSampleRangeAtIndex:index startFrame:startFrame endFrame:endFrame targetPeakDb:targetDb error:&error];
     [self finishRangeMutation:ok error:error title:@"Normalize Range"];
 }
 
 - (void)undoSampleEdit:(id)sender {
-    (void)sender; [_auditionPlayer stop]; SVManagerDocument* model = [self documentModel]; NSString* error = nil;
-    if (![model undoSampleEdit:&error]) { [self showMessage:@"Undo" text:error style:NSAlertStyleInformational]; return; }
+    (void)sender;
+    [_auditionPlayer stop];
+    SVManagerDocument* model = [self documentModel];
+    NSString* error = nil;
+    if (![model undoSampleEdit:&error]) {
+        [self showMessage:@"Undo" text:error style:NSAlertStyleInformational];
+        return;
+    }
     [self refreshAllEditors];
 }
 
 - (void)redoSampleEdit:(id)sender {
-    (void)sender; [_auditionPlayer stop]; SVManagerDocument* model = [self documentModel]; NSString* error = nil;
-    if (![model redoSampleEdit:&error]) { [self showMessage:@"Redo" text:error style:NSAlertStyleInformational]; return; }
+    (void)sender;
+    [_auditionPlayer stop];
+    SVManagerDocument* model = [self documentModel];
+    NSString* error = nil;
+    if (![model redoSampleEdit:&error]) {
+        [self showMessage:@"Redo" text:error style:NSAlertStyleInformational];
+        return;
+    }
     [self refreshAllEditors];
 }
 
@@ -360,7 +417,10 @@
     (void)sender;
     if (_bankOrganizerWindowController == nil) {
         SVManagerDocument* model = [self documentModel];
-        if (model == nil) { [self showMessage:@"Bank Organizer unavailable" text:@"The shared Manager document could not be accessed." style:NSAlertStyleCritical]; return; }
+        if (model == nil) {
+            [self showMessage:@"Bank Organizer unavailable" text:@"The shared Manager document could not be accessed." style:NSAlertStyleCritical];
+            return;
+        }
         _bankOrganizerWindowController = [[SVBankOrganizerWindowController alloc] initWithDocumentModel:model];
     }
     [_bankOrganizerWindowController refreshFromDocument];
@@ -369,11 +429,30 @@
     [_bankOrganizerWindowController.window makeKeyAndOrderFront:self];
 }
 
+- (void)showSoundEditor:(id)sender {
+    (void)sender;
+    if (_soundEditorWindowController == nil) {
+        SVManagerDocument* model = [self documentModel];
+        if (model == nil) {
+            [self showMessage:@"SOUND Editor unavailable" text:@"The shared Manager document could not be accessed." style:NSAlertStyleCritical];
+            return;
+        }
+        _soundEditorWindowController = [[SVSoundEditorWindowController alloc] initWithDocumentModel:model];
+    }
+    [_soundEditorWindowController refreshFromDocument];
+    [_soundEditorWindowController showWindow:self];
+    [_soundEditorWindowController.window center];
+    [_soundEditorWindowController.window makeKeyAndOrderFront:self];
+}
+
 - (void)showMultisampleEditor:(id)sender {
     (void)sender;
     if (_multisampleWindowController == nil) {
         SVManagerDocument* model = [self documentModel];
-        if (model == nil) { [self showMessage:@"Multisample Editor unavailable" text:@"The shared Manager document could not be accessed." style:NSAlertStyleCritical]; return; }
+        if (model == nil) {
+            [self showMessage:@"Multisample Editor unavailable" text:@"The shared Manager document could not be accessed." style:NSAlertStyleCritical];
+            return;
+        }
         _multisampleWindowController = [[SVMultisampleWindowController alloc] initWithDocumentModel:model];
     }
     [_multisampleWindowController refreshFromDocument];
@@ -382,7 +461,14 @@
     [_multisampleWindowController.window makeKeyAndOrderFront:self];
 }
 
-- (void)applicationWillTerminate:(NSNotification*)notification { (void)notification; [_auditionPlayer stop]; }
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender { (void)sender; return YES; }
+- (void)applicationWillTerminate:(NSNotification*)notification {
+    (void)notification;
+    [_auditionPlayer stop];
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
+    (void)sender;
+    return YES;
+}
 
 @end
