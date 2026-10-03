@@ -4,6 +4,7 @@
 - (void)openBankCommand:(id)sender;
 - (void)saveBankCommand:(id)sender;
 - (void)saveBankAsCommand:(id)sender;
+- (void)showMediaCommand:(id)sender;
 @end
 
 namespace {
@@ -47,6 +48,15 @@ void InstallMainMenu(NSApplication* app, SVAppDelegate* delegate) {
     saveAsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     saveAsItem.target = delegate;
     [fileMenu addItem:saveAsItem];
+
+    [fileMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem* mediaItem = [[NSMenuItem alloc] initWithTitle:@"MEDIA Browser…"
+                                                      action:@selector(showMediaCommand:)
+                                               keyEquivalent:@"M"];
+    mediaItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    mediaItem.target = delegate;
+    [fileMenu addItem:mediaItem];
 }
 
 } // namespace
