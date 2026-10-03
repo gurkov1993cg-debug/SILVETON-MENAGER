@@ -49,6 +49,7 @@ if(APPLE)
         src/app/main.mm
         src/app/AppDelegate.mm
         src/app/MainWindowController.mm
+        src/app/WaveformInteraction.mm
         src/app/MultisampleEditorController.mm
         src/app/ManagerDocument.mm
     )
