@@ -24,7 +24,7 @@ Tablet runtime must only open the prepared bank/index and stream audio; it must 
 - `CMakeLists.txt`: portable core + Apple-only Objective-C++ AppKit target, x86_64/macOS 10.13, strict warnings as errors.
 - `include/silveton/manager/ManagerTypes.h`: canonical Manager sample/multisample/SOUND model and preserved raw Korg metadata.
 - `include/silveton/manager/KorgImporter.h`, `src/core/KorgImporter.cpp`: KSF/KMP/KSC import, exact zones/dependencies, canonical PCM16LE. Path handling no longer depends on `std::filesystem`; it uses macOS-10.13-compatible string/POSIX path operations while preserving direct and nested KSF resolution and stable source identities.
-- `include/silveton/manager/SampleEditor.h`: sample-editor public contract for destructive trim, loop metadata, reverse, gain, normalize, fades, root key, fine tune, peak readback, nearest zero crossing and waveform-envelope generation. Implementation is being added without duplicating tablet SOUND controls.
+- `include/silveton/manager/SampleEditor.h`, `src/core/SampleEditor.cpp`: real offline sample-edit core for PCM16LE/PCM24LE/Float32LE project copies. Implements destructive trim, validated loop metadata/crossfade bounds, frame-correct reverse with loop remap, gain, peak normalize, fade in/out, root key, fine tune, peak readback, nearest zero crossing and waveform min/max envelope generation. Source files on disk are not modified by these operations.
 - `include/silveton/manager/SampleHash.h`, `src/core/SampleHash.cpp`: deterministic sample-audio hashing plus exact-byte dedup policy.
 - `include/silveton/manager/SvBankFormat.h`, `src/core/SvBankFormat.cpp`: `.sv` v1 explicit little-endian fixed records + SHA-256.
 - `include/silveton/manager/SvBankBuilder.h`, `src/core/SvBankBuilder.cpp`: reference validation, string/audio dedup, 4096-byte audio alignment, integrity and atomic writing without `std::filesystem`.
@@ -77,11 +77,11 @@ Manager will not duplicate tablet SOUND parameters such as amp/filter/LFO/portam
 - `tests/ManagerCoreTests.cpp` commit `73ff5b5999240b724483556ae185adb397284f45` removes only that test-side incompatibility: string/POSIX temp path creation, file names and cleanup replace `std::filesystem`; the actual regression assertions and Manager behavior are preserved.
 - Intel run `37109218356` / run 49: configuration PASS and `ManagerCoreTests.cpp` progressed past the prior failure. The next real compile failure is `src/core/AudioFileLoader.cpp`, where source identity, extension and stem helpers still used `std::filesystem` unavailable at macOS 10.13.
 - `src/core/AudioFileLoader.cpp` commit `52947cf4a95ab9784a9f643cb6bea12234173c84` removes only that path-library incompatibility. WAV/AIFF parsing, root/loop metadata, PCM conversion and public API remain unchanged.
-- Sample-editor API added; implementation and regression coverage are not yet claimed as verified until their build/tests run.
+- Sample-editor implementation commit `f79a7e33bf1112585cd91a479b975050eda05801` is present but not yet claimed verified until CMake integration and regression tests run.
 - No app-build success is claimed until a subsequent Intel run reaches compile/link/test/sign/package checks.
 
 ## Next
-1. Implement and test `SampleEditor` core operations without changing the tablet SOUND contract.
-2. Wire the verified sample editor core to the native waveform GUI.
-3. Add multisample keyboard/velocity-zone editor.
-4. Continue Intel build/test/sign/package verification and fix only the next real failed step/log.
+1. Add `SampleEditor.cpp` to the existing core target and add regression coverage for every editor operation.
+2. Run the strict Intel/macOS 10.13 build and fix only real compiler/test failures.
+3. Wire verified sample editor core to the native waveform GUI.
+4. Add multisample keyboard/velocity-zone editor.
