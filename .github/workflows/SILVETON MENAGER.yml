@@ -42,6 +42,7 @@ jobs:
             silveton_manager_tests \
             silveton_sample_editor_region_tests \
             silveton_sound_editor_tests \
+            silveton_media_path_tests \
             silveton_manager_bank_io_tests
 
       - name: Run core regression tests
