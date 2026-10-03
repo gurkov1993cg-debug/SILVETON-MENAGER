@@ -211,6 +211,60 @@ bool SampleEditor::setLoop(ImportedSample& sample,
     return true;
 }
 
+bool SampleEditor::applyLoopCrossfade(ImportedSample& sample,
+                                      std::uint32_t crossfadeFrames,
+                                      std::string& error) {
+    error.clear();
+    if (!editable(sample, error)) return false;
+    if (!sample.loop.enabled) {
+        error = "Loop crossfade requires an enabled loop";
+        return false;
+    }
+    if (sample.loop.startFrame >= sample.loop.endFrame || sample.loop.endFrame > sample.totalFrames) {
+        error = "Configured loop range is invalid";
+        return false;
+    }
+    if (crossfadeFrames == 0U) {
+        error = "Loop crossfade length must be greater than zero";
+        return false;
+    }
+
+    const std::uint64_t loopLength = sample.loop.endFrame - sample.loop.startFrame;
+    if (static_cast<std::uint64_t>(crossfadeFrames) * 2U > loopLength) {
+        error = "Loop crossfade cannot exceed half of the loop length";
+        return false;
+    }
+
+    const std::size_t bps = bytesPerSample(sample.encoding);
+    const std::size_t fb = frameBytes(sample);
+    const std::uint64_t fadeFrames = static_cast<std::uint64_t>(crossfadeFrames);
+    const std::uint64_t tailStart = sample.loop.endFrame - fadeFrames;
+    const std::uint64_t headStart = sample.loop.startFrame;
+
+    for (std::uint64_t i = 0U; i < fadeFrames; ++i) {
+        const float headMix = static_cast<float>(static_cast<double>(i + 1U) / static_cast<double>(fadeFrames));
+        const float tailMix = 1.0F - headMix;
+        const std::size_t tailOffset = static_cast<std::size_t>(tailStart + i) * fb;
+        const std::size_t headOffset = static_cast<std::size_t>(headStart + i) * fb;
+
+        for (std::uint16_t channel = 0U; channel < sample.channels; ++channel) {
+            const std::size_t channelOffset = static_cast<std::size_t>(channel) * bps;
+            std::uint8_t* tailScalar = sample.audioData.data() + tailOffset + channelOffset;
+            const std::uint8_t* headScalar = sample.audioData.data() + headOffset + channelOffset;
+            const float blended = readScalar(tailScalar, sample.encoding) * tailMix +
+                                  readScalar(headScalar, sample.encoding) * headMix;
+            writeScalar(tailScalar, sample.encoding, blended);
+        }
+    }
+
+    // The first crossfadeFrames from the old loop head are now represented in
+    // the overlap at the loop tail. Advancing the loop start prevents those
+    // frames from being played a second time after the wrap.
+    sample.loop.startFrame += fadeFrames;
+    sample.loop.crossfadeFrames = 0U;
+    return true;
+}
+
 bool SampleEditor::reverse(ImportedSample& sample, std::string& error) {
     error.clear();
     if (!editable(sample, error)) return false;
