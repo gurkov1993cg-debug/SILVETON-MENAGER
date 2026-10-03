@@ -58,6 +58,7 @@ if(APPLE)
         src/app/BankFileCommands.mm
         src/app/ConverterController.mm
         src/app/MediaController.mm
+        src/app/MediaUnsavedGuard.mm
         src/app/ObjectManagerController.mm
         src/app/MainWindowController.mm
         src/app/WaveformInteraction.mm
