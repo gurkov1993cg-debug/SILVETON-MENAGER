@@ -2,8 +2,9 @@
 #include "silveton/manager/SampleConverter.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
-#include <filesystem>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -48,7 +49,7 @@ ImportedSample makePcm16Sine(std::uint32_t rate, std::uint64_t frames, std::uint
     return sample;
 }
 
-std::vector<char> readPrefix(const std::filesystem::path& path, std::size_t count) {
+std::vector<char> readPrefix(const std::string& path, std::size_t count) {
     std::ifstream input(path, std::ios::binary);
     std::vector<char> bytes(count, '\0');
     input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
@@ -99,16 +100,14 @@ void testDownmixAndKeepEncoding() {
 
 void testWavAndAiffExport() {
     ImportedSample source = makePcm16Sine(44100U, 441U, 2U);
-    const std::filesystem::path directory = std::filesystem::temp_directory_path();
-    const std::filesystem::path wavPath = directory / "silveton_sample_converter_test.wav";
-    const std::filesystem::path aiffPath = directory / "silveton_sample_converter_test.aiff";
-    std::error_code removeError;
-    std::filesystem::remove(wavPath, removeError);
-    std::filesystem::remove(aiffPath, removeError);
+    const std::string wavPath = "/tmp/silveton_sample_converter_test.wav";
+    const std::string aiffPath = "/tmp/silveton_sample_converter_test.aiff";
+    (void)std::remove(wavPath.c_str());
+    (void)std::remove(aiffPath.c_str());
 
     std::string error;
-    require(AudioExporter::writeFile(wavPath.string(), source, ExportAudioFormat::Wav, error), "WAV export must succeed");
-    require(AudioExporter::writeFile(aiffPath.string(), source, ExportAudioFormat::Aiff, error), "AIFF export must succeed");
+    require(AudioExporter::writeFile(wavPath, source, ExportAudioFormat::Wav, error), "WAV export must succeed");
+    require(AudioExporter::writeFile(aiffPath, source, ExportAudioFormat::Aiff, error), "AIFF export must succeed");
 
     const auto wavPrefix = readPrefix(wavPath, 12U);
     require(wavPrefix.size() == 12U, "WAV header must exist");
@@ -118,8 +117,8 @@ void testWavAndAiffExport() {
     require(aiffPrefix.size() == 12U, "AIFF header must exist");
     require(std::string(aiffPrefix.data(), 4U) == "FORM" && std::string(aiffPrefix.data() + 8, 4U) == "AIFF", "AIFF header must be FORM/AIFF");
 
-    std::filesystem::remove(wavPath, removeError);
-    std::filesystem::remove(aiffPath, removeError);
+    (void)std::remove(wavPath.c_str());
+    (void)std::remove(aiffPath.c_str());
 }
 
 void testFloatAifcExport() {
@@ -132,13 +131,12 @@ void testFloatAifcExport() {
     std::string error;
     require(SampleConverter::convert(source, options, converted, error), "float conversion must succeed");
 
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "silveton_sample_converter_float.aifc";
-    std::error_code removeError;
-    std::filesystem::remove(path, removeError);
-    require(AudioExporter::writeFile(path.string(), converted, ExportAudioFormat::Aiff, error), "float AIFC export must succeed");
+    const std::string path = "/tmp/silveton_sample_converter_float.aifc";
+    (void)std::remove(path.c_str());
+    require(AudioExporter::writeFile(path, converted, ExportAudioFormat::Aiff, error), "float AIFC export must succeed");
     const auto prefix = readPrefix(path, 12U);
     require(prefix.size() == 12U && std::string(prefix.data() + 8, 4U) == "AIFC", "float AIFF export must use AIFC container");
-    std::filesystem::remove(path, removeError);
+    (void)std::remove(path.c_str());
 }
 
 } // namespace
