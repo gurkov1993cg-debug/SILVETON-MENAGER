@@ -6,12 +6,14 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
 
 using silveton::manager::BankProject;
 using silveton::manager::DeleteImpact;
 using silveton::manager::ObjectManager;
 
 @interface SVManagerDocument : NSObject
+- (void)clearProject;
 @end
 
 @interface SVManagerDocument (Objects)
@@ -49,6 +51,17 @@ NSString* SVImpactSummary(const DeleteImpact& impact) {
             impact.multisamplesRemoved, impact.multisamplesRemoved == 1U ? @"" : @"s",
             impact.layersRemoved, impact.layersRemoved == 1U ? @"" : @"s",
             impact.soundsRemoved, impact.soundsRemoved == 1U ? @"" : @"s"];
+}
+
+bool SVResetTransientStatePreservingProject(SVManagerDocument* document) {
+    BankProject* project = SVObjectsProject(document);
+    if (project == nullptr) return false;
+    BankProject saved = std::move(*project);
+    [document clearProject];
+    project = SVObjectsProject(document);
+    if (project == nullptr) return false;
+    *project = std::move(saved);
+    return true;
 }
 
 } // namespace
@@ -97,6 +110,15 @@ NSString* SVImpactSummary(const DeleteImpact& impact) {
     else if (kind == 2) ok = ObjectManager::deleteSound(*project, static_cast<std::size_t>(index), impact, e);
     else e = "Invalid object kind.";
     if (!ok) { SVObjectError(error, e); return NO; }
+
+    // Deleting a sample changes sample indexes. Clear sample edit Undo/Redo and
+    // clipboard while preserving the fully remapped project so stale history
+    // can never restore audio into the wrong sample.
+    if (kind == 0 && !SVResetTransientStatePreservingProject(self)) {
+        if (error != nullptr) *error = @"Object deletion succeeded but transient editor state could not be reset safely.";
+        return NO;
+    }
+
     if (summary != nullptr) *summary = SVImpactSummary(impact);
     if (error != nullptr) *error = nil;
     return YES;
