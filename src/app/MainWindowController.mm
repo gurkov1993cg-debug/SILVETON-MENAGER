@@ -1,6 +1,8 @@
 #import <AppKit/AppKit.h>
 
+#include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 
 @interface SVManagerDocument : NSObject
 - (BOOL)importPaths:(NSArray<NSString*>*)paths error:(NSString**)error;
@@ -135,6 +137,21 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
     alert.informativeText = message ?: @"";
     alert.alertStyle = style;
     [alert beginSheetModalForWindow:window completionHandler:nil];
+}
+
+bool parseUnsignedField(NSTextField* field, std::uint64_t& value) noexcept {
+    if (field == nil) return false;
+    NSString* trimmed = [field.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0U || [trimmed hasPrefix:@"-"]) return false;
+    const char* text = trimmed.UTF8String;
+    if (text == nullptr || *text == '\0') return false;
+
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long long parsed = std::strtoull(text, &end, 10);
+    if (errno == ERANGE || end == text || end == nullptr || *end != '\0') return false;
+    value = static_cast<std::uint64_t>(parsed);
+    return true;
 }
 
 } // namespace
@@ -421,6 +438,17 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
     return YES;
 }
 
+- (BOOL)readUnsignedField:(NSTextField*)field label:(NSString*)label value:(uint64_t*)valueOut {
+    std::uint64_t value = 0U;
+    if (!parseUnsignedField(field, value)) {
+        showMessage(self.window, @"Invalid numeric value",
+                    [NSString stringWithFormat:@"%@ must be a non-negative whole number.", label], NSAlertStyleWarning);
+        return NO;
+    }
+    if (valueOut != nullptr) *valueOut = value;
+    return YES;
+}
+
 - (void)finishEditWithError:(NSString*)error title:(NSString*)title {
     if (error.length != 0U) {
         showMessage(self.window, title, error, NSAlertStyleCritical);
@@ -501,16 +529,24 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
 - (void)trimPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
+    uint64_t startFrame = 0U;
+    uint64_t endFrame = 0U;
+    if (![self readUnsignedField:_trimStartField label:@"Trim Start" value:&startFrame] ||
+        ![self readUnsignedField:_trimEndField label:@"Trim End" value:&endFrame]) return;
     NSString* error = nil;
-    [_documentModel trimSampleAtIndex:index startFrame:_trimStartField.unsignedLongLongValue endFrame:_trimEndField.unsignedLongLongValue error:&error];
+    [_documentModel trimSampleAtIndex:index startFrame:startFrame endFrame:endFrame error:&error];
     [self finishEditWithError:error title:@"Trim failed"];
 }
 
 - (void)setLoopPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
+    uint64_t startFrame = 0U;
+    uint64_t endFrame = 0U;
+    if (![self readUnsignedField:_loopStartField label:@"Loop Start" value:&startFrame] ||
+        ![self readUnsignedField:_loopEndField label:@"Loop End" value:&endFrame]) return;
     NSString* error = nil;
-    [_documentModel setLoopForSampleAtIndex:index enabled:YES startFrame:_loopStartField.unsignedLongLongValue endFrame:_loopEndField.unsignedLongLongValue error:&error];
+    [_documentModel setLoopForSampleAtIndex:index enabled:YES startFrame:startFrame endFrame:endFrame error:&error];
     [self finishEditWithError:error title:@"Set Loop failed"];
 }
 
@@ -525,8 +561,12 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
 - (void)crossfadePressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
-    const unsigned long long requested = _crossfadeField.unsignedLongLongValue;
-    if (requested > UINT32_MAX) { showMessage(self.window, @"Crossfade failed", @"Crossfade frame count is too large.", NSAlertStyleWarning); return; }
+    uint64_t requested = 0U;
+    if (![self readUnsignedField:_crossfadeField label:@"Loop Crossfade" value:&requested]) return;
+    if (requested > UINT32_MAX) {
+        showMessage(self.window, @"Crossfade failed", @"Crossfade frame count is too large.", NSAlertStyleWarning);
+        return;
+    }
     NSString* error = nil;
     [_documentModel applyLoopCrossfadeForSampleAtIndex:index frames:static_cast<uint32_t>(requested) error:&error];
     [self finishEditWithError:error title:@"Crossfade failed"];
@@ -535,16 +575,20 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
 - (void)fadeInPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
+    uint64_t frames = 0U;
+    if (![self readUnsignedField:_fadeInField label:@"Fade In" value:&frames]) return;
     NSString* error = nil;
-    [_documentModel fadeInSampleAtIndex:index frames:_fadeInField.unsignedLongLongValue error:&error];
+    [_documentModel fadeInSampleAtIndex:index frames:frames error:&error];
     [self finishEditWithError:error title:@"Fade In failed"];
 }
 
 - (void)fadeOutPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
+    uint64_t frames = 0U;
+    if (![self readUnsignedField:_fadeOutField label:@"Fade Out" value:&frames]) return;
     NSString* error = nil;
-    [_documentModel fadeOutSampleAtIndex:index frames:_fadeOutField.unsignedLongLongValue error:&error];
+    [_documentModel fadeOutSampleAtIndex:index frames:frames error:&error];
     [self finishEditWithError:error title:@"Fade Out failed"];
 }
 
@@ -577,8 +621,14 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
     const NSInteger root = _rootKeyField.integerValue;
     const float cents = _fineTuneField.floatValue;
-    if (root < 0 || root > 127) { showMessage(self.window, @"Tuning failed", @"Root Key must be between 0 and 127.", NSAlertStyleWarning); return; }
-    if (cents < -100.0F || cents > 100.0F) { showMessage(self.window, @"Tuning failed", @"Fine Tune must be between -100 and +100 cents.", NSAlertStyleWarning); return; }
+    if (root < 0 || root > 127) {
+        showMessage(self.window, @"Tuning failed", @"Root Key must be between 0 and 127.", NSAlertStyleWarning);
+        return;
+    }
+    if (cents < -100.0F || cents > 100.0F) {
+        showMessage(self.window, @"Tuning failed", @"Fine Tune must be between -100 and +100 cents.", NSAlertStyleWarning);
+        return;
+    }
 
     NSString* error = nil;
     if (![_documentModel setRootKeyForSampleAtIndex:index rootKey:static_cast<uint8_t>(root) error:&error]) {
@@ -592,35 +642,47 @@ void showMessage(NSWindow* window, NSString* title, NSString* message, NSAlertSt
     [self finishEditWithError:nil title:@"Tuning failed"];
 }
 
-- (uint64_t)zeroRadius {
-    return _zeroRadiusField.unsignedLongLongValue;
+- (BOOL)readZeroRadius:(uint64_t*)radiusOut {
+    return [self readUnsignedField:_zeroRadiusField label:@"Zero radius" value:radiusOut];
 }
 
 - (void)snapTrimStartPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
-    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:_trimStartField.unsignedLongLongValue radius:[self zeroRadius]];
+    uint64_t frame = 0U;
+    uint64_t radius = 0U;
+    if (![self readUnsignedField:_trimStartField label:@"Trim Start" value:&frame] || ![self readZeroRadius:&radius]) return;
+    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:frame radius:radius];
     _trimStartField.stringValue = [NSString stringWithFormat:@"%llu", static_cast<unsigned long long>(snapped)];
 }
 
 - (void)snapTrimEndPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
-    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:_trimEndField.unsignedLongLongValue radius:[self zeroRadius]];
+    uint64_t frame = 0U;
+    uint64_t radius = 0U;
+    if (![self readUnsignedField:_trimEndField label:@"Trim End" value:&frame] || ![self readZeroRadius:&radius]) return;
+    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:frame radius:radius];
     _trimEndField.stringValue = [NSString stringWithFormat:@"%llu", static_cast<unsigned long long>(snapped)];
 }
 
 - (void)snapLoopStartPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
-    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:_loopStartField.unsignedLongLongValue radius:[self zeroRadius]];
+    uint64_t frame = 0U;
+    uint64_t radius = 0U;
+    if (![self readUnsignedField:_loopStartField label:@"Loop Start" value:&frame] || ![self readZeroRadius:&radius]) return;
+    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:frame radius:radius];
     _loopStartField.stringValue = [NSString stringWithFormat:@"%llu", static_cast<unsigned long long>(snapped)];
 }
 
 - (void)snapLoopEndPressed:(id)sender {
     (void)sender;
     NSUInteger index = 0U; if (![self requireSelectedSample:&index]) return;
-    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:_loopEndField.unsignedLongLongValue radius:[self zeroRadius]];
+    uint64_t frame = 0U;
+    uint64_t radius = 0U;
+    if (![self readUnsignedField:_loopEndField label:@"Loop End" value:&frame] || ![self readZeroRadius:&radius]) return;
+    const uint64_t snapped = [_documentModel nearestZeroCrossingForSampleAtIndex:index frame:frame radius:radius];
     _loopEndField.stringValue = [NSString stringWithFormat:@"%llu", static_cast<unsigned long long>(snapped)];
 }
 
