@@ -34,6 +34,26 @@ workflows:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$CM_ENV"
 
+          SAMPLE_CONVERTER="$PROJECT_DIR/src/core/SampleConverter.cpp"
+          if [ ! -f "$SAMPLE_CONVERTER" ]; then
+            echo "ERROR: Missing $SAMPLE_CONVERTER"
+            exit 1
+          fi
+
+          python3 - "$SAMPLE_CONVERTER" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          text = path.read_text()
+          old = """            const std::uint16_t u = static_cast<std::uint16_t>(p[0]) |\n                                    (static_cast<std::uint16_t>(p[1]) << 8U);"""
+          new = """            const std::uint16_t u = static_cast<std::uint16_t>(\n                static_cast<std::uint32_t>(p[0]) |\n                (static_cast<std::uint32_t>(p[1]) << 8U));"""
+          if old not in text:
+              raise SystemExit("ERROR: Expected SampleConverter pattern not found")
+          path.write_text(text.replace(old, new, 1))
+          print("Patched SampleConverter.cpp uint16_t conversion")
+          PY
+
       - name: Configure
         script: |
           set -euo pipefail
