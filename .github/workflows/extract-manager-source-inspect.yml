@@ -1,0 +1,47 @@
+name: Extract Manager Source Inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/extract-manager-source-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract selected current Manager sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/silveton-manager-src inspect-current-manager
+          mkdir -p /tmp/silveton-manager-src inspect-current-manager
+          unzip -q silveton-manager.zip -d /tmp/silveton-manager-src
+          ROOT="$(find /tmp/silveton-manager-src -type f -name CMakeLists.txt -print -quit | xargs -r dirname)"
+          test -n "$ROOT"
+          cp "$ROOT/include/silveton/manager/SvBankFormat.h" inspect-current-manager/
+          cp "$ROOT/include/silveton/manager/SvBankBuilder.h" inspect-current-manager/
+          cp "$ROOT/include/silveton/manager/SvBankReader.h" inspect-current-manager/
+          cp "$ROOT/include/silveton/manager/ManagerTypes.h" inspect-current-manager/
+          cp "$ROOT/src/core/SvBankBuilder.cpp" inspect-current-manager/
+          cp "$ROOT/src/core/SvBankReader.cpp" inspect-current-manager/
+          cp "$ROOT/src/core/SvBankFormat.cpp" inspect-current-manager/ 2>/dev/null || true
+          cp "$ROOT/tests/ManagerCoreTests.cpp" inspect-current-manager/
+          cp "$ROOT/tests/ManagerDocumentBankIOTests.mm" inspect-current-manager/ 2>/dev/null || true
+          cp "$ROOT/CMakeLists.txt" inspect-current-manager/CMakeLists.txt
+          printf '%s\n' "$ROOT" > inspect-current-manager/SOURCE_ROOT.txt
+      - name: Commit extracted sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add inspect-current-manager
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Expose current Manager bank format for integration test'
+          git push
