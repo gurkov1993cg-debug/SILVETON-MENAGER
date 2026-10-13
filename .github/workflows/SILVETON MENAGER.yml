@@ -19,11 +19,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_PATH=".github/workflows/silveton-manager.zip"
+          # the source zip lives in the root of the repository (the .github folder is hidden on the Mac);
+          # the old place inside .github/workflows still works
+          ZIP_PATH="silveton-manager.zip"
+          if [ ! -f "$ZIP_PATH" ]; then
+            ZIP_PATH=".github/workflows/silveton-manager.zip"
+          fi
           WORK_DIR="$RUNNER_TEMP/silveton-manager-src"
 
           if [ ! -f "$ZIP_PATH" ]; then
-            echo "ERROR: Missing $ZIP_PATH"
+            echo "ERROR: Missing silveton-manager.zip (put it in the root of the repository)"
             exit 1
           fi
 
