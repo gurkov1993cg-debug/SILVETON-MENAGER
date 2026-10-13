@@ -116,11 +116,9 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent             "$APP_PATH"             "$RUNNER_TEMP/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip"
           shasum -a 256             "$RUNNER_TEMP/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip"             > "$RUNNER_TEMP/silveton-artifact/SHA256.txt"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload app (one file, not zipped a second time)
+        uses: actions/upload-artifact@v7
         with:
-          name: SILVETON-MANAGER-iMac2011-x86_64
-          path: |
-            ${{ runner.temp }}/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip
-            ${{ runner.temp }}/silveton-artifact/SHA256.txt
+          path: ${{ runner.temp }}/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip
+          archive: false
           if-no-files-found: error
