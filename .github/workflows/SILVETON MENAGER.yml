@@ -108,17 +108,31 @@ jobs:
           codesign --force --deep --sign - "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-      - name: Package app
+      - name: Make disk image (.dmg)
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/silveton-artifact"
-          ditto -c -k --sequesterRsrc --keepParent             "$APP_PATH"             "$RUNNER_TEMP/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip"
-          shasum -a 256             "$RUNNER_TEMP/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip"             > "$RUNNER_TEMP/silveton-artifact/SHA256.txt"
+          OUT_DIR="$RUNNER_TEMP/silveton-artifact"
+          STAGE="$RUNNER_TEMP/silveton-dmg-stage"
+          DMG="$OUT_DIR/SILVETON-MANAGER-iMac2011-x86_64.dmg"
+          rm -rf "$STAGE" "$OUT_DIR"
+          mkdir -p "$STAGE" "$OUT_DIR"
+          ditto "$APP_PATH" "$STAGE/SILVETON Manager.app"
+          ln -s /Applications "$STAGE/Applications"
+          # HFS+ so that High Sierra opens it; retry because hdiutil on the runner is sometimes busy
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "SILVETON MANAGER" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG"; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then echo "ERROR: hdiutil failed 3 times"; exit 1; fi
+            sleep 5
+          done
+          hdiutil verify "$DMG"
+          ls -la "$DMG"
 
-      - name: Upload app (one file, not zipped a second time)
+      - name: Upload the disk image (one file, no zip)
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ runner.temp }}/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.zip
+          path: ${{ runner.temp }}/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.dmg
           archive: false
           if-no-files-found: error
