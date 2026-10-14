@@ -108,31 +108,19 @@ jobs:
           codesign --force --deep --sign - "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-      - name: Make disk image (.dmg)
+      - name: Package the app in ONE zip (Safari expands it straight to the .app)
         shell: bash
         run: |
           set -euo pipefail
           OUT_DIR="$RUNNER_TEMP/silveton-artifact"
-          STAGE="$RUNNER_TEMP/silveton-dmg-stage"
-          DMG="$OUT_DIR/SILVETON-MANAGER-iMac2011-x86_64.dmg"
-          rm -rf "$STAGE" "$OUT_DIR"
-          mkdir -p "$STAGE" "$OUT_DIR"
-          ditto "$APP_PATH" "$STAGE/SILVETON Manager.app"
-          ln -s /Applications "$STAGE/Applications"
-          # HFS+ so that High Sierra opens it; retry because hdiutil on the runner is sometimes busy
-          for attempt in 1 2 3; do
-            if hdiutil create -volname "SILVETON MANAGER" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG"; then
-              break
-            fi
-            if [ "$attempt" = "3" ]; then echo "ERROR: hdiutil failed 3 times"; exit 1; fi
-            sleep 5
-          done
-          hdiutil verify "$DMG"
-          ls -la "$DMG"
+          rm -rf "$OUT_DIR"
+          mkdir -p "$OUT_DIR"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUT_DIR/SILVETON Manager.zip"
+          ls -la "$OUT_DIR"
 
-      - name: Upload the disk image (one file, no zip)
+      - name: Upload (one file, GitHub does not zip it a second time)
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ runner.temp }}/silveton-artifact/SILVETON-MANAGER-iMac2011-x86_64.dmg
+          path: ${{ runner.temp }}/silveton-artifact/SILVETON Manager.zip
           archive: false
           if-no-files-found: error
